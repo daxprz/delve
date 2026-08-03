@@ -1,0 +1,60 @@
+{
+  "$schemaVersion": "1",
+  "root": ".",
+  "resources": [
+    {
+      "type": "beads-dir",
+      "location": "beads",
+      "discovered-via": "convention",
+      "registered-at": "2026-08-03T17:33:09Z"
+    },
+    {
+      "type": "goals-dir",
+      "location": "goals",
+      "discovered-via": "convention",
+      "registered-at": "2026-08-03T17:33:09Z"
+    },
+    {
+      "type": "milestones-dir",
+      "location": "milestones",
+      "discovered-via": "convention",
+      "registered-at": "2026-08-03T17:33:09Z"
+    },
+    {
+      "type": "agent.liaison",
+      "location": "ai/agents/liaison",
+      "discovered-via": "convention",
+      "registered-at": "2026-08-03T17:33:10Z"
+    },
+    {
+      "type": "agent.ccc",
+      "location": "ai/agents/ccc",
+      "discovered-via": "convention",
+      "registered-at": "2026-08-03T17:33:10Z"
+    },
+    {
+      "type": "vscode-workspace",
+      "location": ".ccc/workspace.code-workspace",
+      "discovered-via": "schema-always",
+      "registered-at": "2026-08-03T17:33:10Z"
+    },
+    {
+      "type": "messages-dir",
+      "location": "messages",
+      "discovered-via": "schema-always",
+      "registered-at": "2026-08-03T17:33:10Z"
+    },
+    {
+      "type": "primary-source-repo",
+      "location": ".",
+      "discovered-via": "schema-always",
+      "registered-at": "2026-08-03T17:33:10Z"
+    },
+    {
+      "type": "liaison-agent-dir",
+      "location": "ai/agents/liaison",
+      "discovered-via": "schema-always",
+      "registered-at": "2026-08-03T17:33:10Z"
+    }
+  ]
+}

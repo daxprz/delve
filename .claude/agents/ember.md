@@ -1,0 +1,1 @@
+../../ai/agents/ember/role.md

@@ -1,0 +1,1 @@
+../../ai/agents/ccc/role.md
