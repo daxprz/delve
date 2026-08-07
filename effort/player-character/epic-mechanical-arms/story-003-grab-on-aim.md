@@ -103,6 +103,23 @@ instead of smoothly gliding to a stop.
       3 m; the grapple rope length is also capped there). Grab/box-grab
       tests still **RESULT: PASS**.
 
+### Change 2026-08-03 — grabbing is JUST grabbing (grapple removed)
+
+Operator: "make it so the grapple is just the grabbing." The rope-swing
+grapple is **removed** — grabbing a wall/pillar now simply **latches the
+hand onto the point** with no pull, swing, or pendulum. Grabbing the
+movable **box still reels it in** (that's grabbing an object, not a
+grapple).
+
+- Removed the pendulum from `player.gd` (`grapple_active` / `grapple_anchor`
+  / `grapple_length` / `_apply_rope` / `GRAPPLE_DRAG` all deleted) and the
+  `_begin_grapple` setup + `grapple_active` re-arm from `mechanical_arms.gd`.
+  The `AIR_CONTROL` momentum branch is kept — it's still needed for the
+  Runner's wall-jump launch.
+- `tests/smoke_grab.gd` rewritten for grab-only: **RESULT: PASS** — the
+  grab engages, the hand reaches and holds the point, and a frozen player
+  is **not** moved/flung by the grab (no swing); release lets go.
+
 ## Out of scope
 
 - Special powers on the grab (pulling objects toward you, throwing,

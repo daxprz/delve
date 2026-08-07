@@ -4,7 +4,7 @@ extends Node3D
 ## the testing playground. A grid of rooms is connected by DOORWAYS (a
 ## randomized-DFS spanning tree + a few extra loops), so you move room to
 ## room down long runs. Some rooms have an UPPER area — a raised platform
-## you climb up to (no stairs; use jump / wall-jump / grapple).
+## you climb up to (no stairs; use jump / wall-jump / zip).
 ##
 ## Set `map_seed` for a different layout; the same seed regenerates the
 ## same map.

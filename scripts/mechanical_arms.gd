@@ -11,9 +11,9 @@ extends Node3D
 ## which keeps it stable and easy to tune.
 ##
 ## Grabbing (STO-CHARACTER-003): left mouse = left hand, right mouse =
-## right hand. A ray from the centre of the screen (crosshair aim,
-## confirmed option A) finds a point; the hand is pinned there and the
-## arm tugs the player toward it (grapple).
+## right hand. A ray from the centre of the screen (crosshair aim) finds a
+## point; the hand latches onto it. Grabbing the movable box reels it in.
+## Grabbing is JUST grabbing — there is no rope-swing grapple.
 ##
 ## All shape/behaviour values live here in one place.
 
@@ -322,13 +322,8 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 			body.apply_central_impulse(to_hand.normalized() * REEL_IMPULSE)
 		return
 
-	# Grabbed something solid (wall/pillar): steer the player toward the
-	# point and STOP at HOLD_DIST. Setting velocity to a bounded, distance-
-	# scaled target avoids the overshoot-and-bounce of a constant tug.
-	# Solid grab (wall/pillar): keep the player on a rope from the anchor
-	# so they swing with their momentum (dangle if slow). Re-arm each tick;
-	# the anchor + rope length were fixed when the grab began.
-	_player.grapple_active = true
+	# Grabbed something solid (wall/pillar): the hand simply holds onto the
+	# point — no rope, no swing. Grabbing is just grabbing now.
 
 
 func _update_visual(arm: Dictionary) -> void:
@@ -383,8 +378,9 @@ func _update_grab_input() -> void:
 					if col is RigidBody3D:
 						arm["grabbed_body"] = col
 					else:
+						# A solid surface (wall/pillar): the hand just latches
+						# onto the point — no rope swing (grab-only).
 						arm["grabbed_body"] = null
-						_begin_grapple(hit["position"])
 			elif was_pressed and not pressed:
 				arm["grabbed"] = false
 				arm["grabbed_body"] = null
@@ -447,17 +443,6 @@ func total_length(i: int) -> float:
 		sum += float(l)
 	return sum
 
-## Begin a rope grapple from the player to `anchor`, fixing the rope
-## length at the current player→anchor distance (so it's taut and swings).
-func _begin_grapple(anchor: Vector3) -> void:
-	if _player == null:
-		return
-	var ppos: Vector3 = _player.global_position
-	_player.grapple_anchor = anchor
-	_player.grapple_length = clampf((anchor - ppos).length(), 1.0, GRAB_REACH)
-	_player.grapple_active = true
-
-
 # ---------------------------------------------------------------------
 # Punch mode — STO-CHARACTER-007 / 008 / 009
 # ---------------------------------------------------------------------
@@ -469,8 +454,6 @@ func set_punch_mode(on: bool) -> void:
 		for i in range(_arms.size()):
 			_arms[i]["grabbed"] = false
 			_arms[i]["grabbed_body"] = null
-		if _player != null:
-			_player.grapple_active = false
 	_update_fist_look()
 	print("[ARMS] mode = %s" % ("PUNCH" if on else "GRAB"))
 
@@ -590,7 +573,6 @@ func grab(i: int, target: Vector3) -> void:
 	_arms[i]["grabbed"] = true
 	_arms[i]["grabbed_body"] = null
 	_arms[i]["target"] = target
-	_begin_grapple(target)
 
 func grab_body(i: int, body: Node, point: Vector3) -> void:
 	_arms[i]["grabbed"] = true

@@ -109,18 +109,8 @@ var _wall_lock := 0.0
 ## over the window — so we capture lazily on the first mouse event.
 var _capture_wanted := true
 
-## Grapple rope (STO-CHARACTER-003). While a mechanical arm holds a solid
-## grab, it sets the anchor + rope length (fixed when the grab began) and
-## re-arms grapple_active each tick. The player then behaves like a
-## pendulum on a rope: gravity + their own momentum swing them, and the
-## rope only stops them going FURTHER than its length. Slow => they hang
-## and dangle; fast => they swing (and can make it up onto a ledge).
-var grapple_active := false
-var grapple_anchor := Vector3.ZERO
-var grapple_length := 0.0
-## Gentle mid-swing steering, and a slight drag so weak swings settle.
+## Gentle mid-air steering used while a wall-jump launch is carrying.
 const AIR_CONTROL := 10.0
-const GRAPPLE_DRAG := 0.995
 
 
 func _enter_tree() -> void:
@@ -327,9 +317,6 @@ func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		return  # remote copies follow the MultiplayerSynchronizer
 
-	var grappling := grapple_active
-	grapple_active = false  # arms re-arm each tick while the grab is held
-
 	# Combo decays if you don't land a hit in time (STO-COMBAT-003).
 	if _combo_timer > 0.0:
 		_combo_timer -= delta
@@ -396,8 +383,8 @@ func _physics_process(delta: float) -> void:
 	if _wall_lock > 0.0:
 		_wall_lock -= delta
 
-	if grappling or _wall_lock > 0.0:
-		# Keep momentum (grapple swing / wall-jump launch): only gentle steer.
+	if _wall_lock > 0.0:
+		# Keep momentum through a wall-jump launch: only gentle steer.
 		if direction:
 			velocity += direction * AIR_CONTROL * delta
 	else:
@@ -409,9 +396,6 @@ func _physics_process(delta: float) -> void:
 			velocity.z = move_toward(velocity.z, 0.0, _speed)
 
 	move_and_slide()
-
-	if grappling:
-		_apply_rope()
 
 	_push_rigid_bodies()
 
@@ -749,21 +733,6 @@ func _nearest_enemy(reach: float) -> Node:
 			best_d = d
 			best = node
 	return best
-
-
-## Rope/pendulum constraint: keep the player within grapple_length of the
-## anchor. Cancels only the OUTWARD velocity, so tangential momentum (the
-## swing) is preserved. A slight drag lets weak swings settle to a dangle.
-func _apply_rope() -> void:
-	var to_anchor := global_position - grapple_anchor
-	var dist := to_anchor.length()
-	if dist > grapple_length and dist > 0.001:
-		var dir := to_anchor / dist
-		global_position = grapple_anchor + dir * grapple_length
-		var radial := velocity.dot(dir)
-		if radial > 0.0:
-			velocity -= dir * radial
-	velocity *= GRAPPLE_DRAG
 
 
 ## Push movable RigidBodies we bump into (STO-WORLD-001 movable box).
