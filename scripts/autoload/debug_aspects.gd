@@ -15,10 +15,12 @@ func _ready() -> void:
 	r.call("player/movement", "Owner-side position/velocity (throttled)")
 	r.call("player/combat", "Damage taken, death/respawn, combo changes")
 	r.call("player/abilities", "Ability activations (zip, throw, pull, guard, roll, fly)")
+	r.call("player/tail", "GIZMO: fast tail segments — hit points + swipe velocity")
 
 	# -- Enemy --
 	r.call("enemy/ai", "Enemy target acquisition and chase state")
 	r.call("enemy/combat", "Enemy damage, death, attacks")
+	r.call("enemy/hits", "GIZMO: hit dv arrows (yellow=shove, orange=stumble, red=ragdoll) + downed pelvis marker")
 
 	# -- Performance --
 	r.call("perf/fps", "Per-second FPS log line")

@@ -34,13 +34,55 @@ class AspectInfo:
 ## tests need logs without the visual overlay.
 var global_enabled := false
 
+## Rolling tail of recent DBG lines (for the F3 panel).
+const LOG_HISTORY_MAX := 200
+var log_history: PackedStringArray = PackedStringArray()
+
 var _aspects: Dictionary = {}       # path -> AspectInfo
 var _aspect_order: Array[String] = []
+
+# 3D gizmo channel (STO-TOOLS-003): systems queue lines/points via
+# draw_line3/draw_point3 (gated by should_draw); we rebuild one
+# unshaded ImmediateMesh from the live queue every frame.
+var _draw_items: Array = []         # {a, b, c: Color, until: msec}
+var _draw_root: MeshInstance3D
+var _draw_mesh: ImmediateMesh
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	load_profile()
+
+	_draw_mesh = ImmediateMesh.new()
+	_draw_root = MeshInstance3D.new()
+	_draw_root.name = "DebugGizmos"
+	_draw_root.mesh = _draw_mesh
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.no_depth_test = true  # gizmos read through walls
+	_draw_root.material_override = mat
+	add_child(_draw_root)
+
+
+func _process(_delta: float) -> void:
+	_draw_mesh.clear_surfaces()
+	if _draw_items.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	var live: Array = []
+	for item in _draw_items:
+		if item["until"] >= now:
+			live.append(item)
+	_draw_items = live
+	if _draw_items.is_empty() or not global_enabled:
+		return
+	_draw_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+	for item in _draw_items:
+		_draw_mesh.surface_set_color(item["c"])
+		_draw_mesh.surface_add_vertex(item["a"])
+		_draw_mesh.surface_add_vertex(item["b"])
+	_draw_mesh.surface_end()
 
 
 # -- Registration ------------------------------------------------------
@@ -86,6 +128,17 @@ func set_observer(path: String, observer_id: String, visual: bool,
 		req.visual = visual
 		req.textual = textual
 	_recompute(info)
+
+
+## Current [visual, textual] request for an observer on an aspect.
+func get_observer_state(path: String, observer_id: String) -> Array:
+	var info: AspectInfo = _aspects.get(path)
+	if info == null:
+		return [false, TextMode.NONE]
+	var req: ObserverRequest = info.observers.get(observer_id)
+	if req == null:
+		return [false, TextMode.NONE]
+	return [req.visual, req.textual]
 
 
 func remove_observer(observer_id: String) -> void:
@@ -137,13 +190,38 @@ func vis(path: String, entity: Node, draw_fn: Callable) -> void:
 
 
 ## Gated, formatted textual output. Prefix "DBG <path>:" makes lines
-## greppable in logs.
+## greppable in logs; lines also land in log_history for the F3 panel.
 func log(path: String, _entity: Node, msg: String, args: Array = []) -> void:
 	var info: AspectInfo = _aspects.get(path)
 	if info == null or info.actual_textual == TextMode.NONE:
 		return
 	var formatted := msg % args if not args.is_empty() else msg
-	print("DBG %s: %s" % [path, formatted])
+	var line := "DBG %s: %s" % [path, formatted]
+	print(line)
+	log_history.append(line)
+	if log_history.size() > LOG_HISTORY_MAX:
+		log_history = log_history.slice(log_history.size() - LOG_HISTORY_MAX)
+
+
+## Queue a gizmo line for this frame (or ttl seconds). Gated by
+## should_draw, so callers can emit unconditionally.
+func draw_line3(path: String, entity: Node, from: Vector3, to: Vector3,
+		color := Color.YELLOW, ttl := 0.0) -> void:
+	if not should_draw(path, entity):
+		return
+	_draw_items.append({"a": from, "b": to, "c": color,
+			"until": Time.get_ticks_msec() + maxi(int(ttl * 1000.0), 50)})
+
+
+## Queue a small 3-axis cross marker at a point.
+func draw_point3(path: String, entity: Node, pos: Vector3,
+		size := 0.15, color := Color.YELLOW, ttl := 0.0) -> void:
+	if not should_draw(path, entity):
+		return
+	var until := Time.get_ticks_msec() + maxi(int(ttl * 1000.0), 50)
+	for axis in [Vector3.RIGHT, Vector3.UP, Vector3.BACK]:
+		_draw_items.append({"a": pos - axis * size, "b": pos + axis * size,
+				"c": color, "until": until})
 
 
 # -- Persistence (human observer only) -----------------------------------
