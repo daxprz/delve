@@ -50,6 +50,16 @@ void fragment() {
 ## mechanical arms attach at the shoulders instead. Set before _ready.
 var build_human_arms := true
 
+## Overall body size (STO-CHARACTER-037): 1.0 is normal, the Guardian
+## is bigger. Scales bone lengths, segment sizes and stance height.
+var size_scale := 1.0
+
+## A SECOND pair of arms below the first (STO-CHARACTER-039, Builder).
+var extra_arms := false
+
+## Big ears on the head (STO-CHARACTER-038, Sniper).
+var ears := false
+
 ## Base body color. Set before _ready (players: GRAY; enemies: red).
 var base_color := GRAY
 
@@ -90,6 +100,7 @@ var _feet: Array = []
 var _uppers: Array = []   # empty for the Grabber
 var _forearms: Array = []
 var _hands: Array = []
+var _arm_sides: Array = []   # -1 left / +1 right, per built arm
 var _torso: Node3D
 var _neck: Node3D
 var _head: Node3D
@@ -123,6 +134,16 @@ func _ready() -> void:
 		_thigh_len = THIGH_LEN * _leg_scale
 		_shin_len = SHIN_LEN * _leg_scale
 		_base_pelvis_y *= _leg_scale
+	# Overall size on top of any per-individual variation.
+	if size_scale != 1.0:
+		_leg_scale *= size_scale
+		_arm_scale *= size_scale
+		_torso_scale *= size_scale
+		_head_scale *= size_scale
+		_bulk *= size_scale
+		_thigh_len *= size_scale
+		_shin_len *= size_scale
+		_base_pelvis_y *= size_scale
 	_body_mat = _make_material()
 	_build()
 	set_process(true)
@@ -191,6 +212,23 @@ func _seg(joint: Node3D, size: Vector3, center: Vector3) -> void:
 	joint.add_child(mi)
 
 
+## One arm chain hanging from `shoulder`. `prefix` distinguishes the
+## Builder's lower pair. All built arms animate with the walk.
+func _build_arm(shoulder: Node3D, s: String, ar: float, prefix: String) -> void:
+	# Left arms swing opposite right arms; remembered per arm so the
+	# Builder's four still alternate correctly.
+	_arm_sides.append(-1.0 if s == "L" else 1.0)
+	var upper := _joint(shoulder, prefix + "UpperArm" + s, Vector3.ZERO)
+	_seg(upper, Vector3(0.11, 0.32 * ar, 0.11), Vector3(0.0, -0.16 * ar, 0.0))
+	var fore := _joint(upper, prefix + "Forearm" + s, Vector3(0.0, -0.32 * ar, 0.0))
+	_seg(fore, Vector3(0.10, 0.30 * ar, 0.10), Vector3(0.0, -0.15 * ar, 0.0))
+	var hand := _joint(fore, prefix + "Hand" + s, Vector3(0.0, -0.30 * ar, 0.0))
+	_seg(hand, Vector3(0.12, 0.14, 0.12), Vector3.ZERO)
+	_uppers.append(upper)
+	_forearms.append(fore)
+	_hands.append(hand)
+
+
 func _build() -> void:
 	# Shorthand multipliers (all 1.0 without a variation seed).
 	var lg := _leg_scale
@@ -212,6 +250,17 @@ func _build() -> void:
 	_head = head
 	_seg(head, Vector3(0.26 * hd, 0.30 * hd, 0.26 * hd), Vector3.ZERO)
 
+	# Big listening ears (STO-CHARACTER-038, Sniper): tall, angled
+	# slightly outward so they read clearly from the side.
+	if ears:
+		for ear_side in [-1.0, 1.0]:
+			var es := float(ear_side)
+			var ear := _joint(head, "Ear" + ("L" if es < 0.0 else "R"),
+					Vector3(0.13 * hd * es, 0.16 * hd, 0.0))
+			ear.rotation.z = -0.28 * es
+			_seg(ear, Vector3(0.07 * hd, 0.34 * hd, 0.13 * hd),
+					Vector3(0.0, 0.16 * hd, 0.0))
+
 	for side_v in [-1.0, 1.0]:
 		var side := float(side_v)
 		var s := "L" if side < 0.0 else "R"
@@ -221,15 +270,15 @@ func _build() -> void:
 				Vector3(0.26 * bk * side, 0.18 * to, 0.0))
 		_seg(shoulder, Vector3(0.15, 0.15, 0.15), Vector3.ZERO)
 		if build_human_arms:
-			var upper := _joint(shoulder, "UpperArm" + s, Vector3.ZERO)
-			_seg(upper, Vector3(0.11, 0.32 * ar, 0.11), Vector3(0.0, -0.16 * ar, 0.0))
-			var fore := _joint(upper, "Forearm" + s, Vector3(0.0, -0.32 * ar, 0.0))
-			_seg(fore, Vector3(0.10, 0.30 * ar, 0.10), Vector3(0.0, -0.15 * ar, 0.0))
-			var hand := _joint(fore, "Hand" + s, Vector3(0.0, -0.30 * ar, 0.0))
-			_seg(hand, Vector3(0.12, 0.14, 0.12), Vector3.ZERO)
-			_uppers.append(upper)
-			_forearms.append(fore)
-			_hands.append(hand)
+			_build_arm(shoulder, s, ar, "")
+		# Builder: a SECOND pair of arms below the first
+		# (STO-CHARACTER-039). Slightly shorter, so they read as a
+		# lower pair rather than a duplicate.
+		if extra_arms:
+			var shoulder2 := _joint(torso, "LowerShoulder" + s,
+					Vector3(0.24 * bk * side, -0.04 * to, 0.02))
+			_seg(shoulder2, Vector3(0.13, 0.13, 0.13), Vector3.ZERO)
+			_build_arm(shoulder2, s, ar * 0.85, "Lower")
 
 		# Legs
 		var hip := _joint(_pelvis, "Hip" + s, Vector3(0.12 * bk * side, -0.08, 0.0))
@@ -351,9 +400,12 @@ func _process(delta: float) -> void:
 	var sw := sin(_walk_phase)
 	var amp := clampf(speed * 0.09, 0.05, MAX_SWING) if moving else 0.05
 	for k in _uppers.size():
-		var dir := -1.0 if k == 0 else 1.0
+		var dir: float = _arm_sides[k] if k < _arm_sides.size() else 1.0
 		var upper: Node3D = _uppers[k]
-		upper.rotation.x = sw * dir * amp * 0.9
+		# Lower arms (the Builder's second pair) swing a little behind
+		# the upper pair so the four don't move as one block.
+		var lag := 0.0 if k % 2 == 0 else 0.6
+		upper.rotation.x = sin(_walk_phase - lag) * dir * amp * 0.9
 
 
 ## Clamp `p` so its horizontal distance from `center` is at most `maxd`

@@ -12,6 +12,7 @@ const BodyScript := preload("res://scripts/body.gd")
 const WingsScript := preload("res://scripts/wings.gd")
 const ShockwaveScript := preload("res://scripts/shockwave.gd")
 const CharacterDB := preload("res://scripts/characters.gd")
+const EchoVisionScript := preload("res://scripts/echo_vision.gd")
 ## Per-contact impulse used to push movable RigidBodies (scaled by speed).
 const PUSH_IMPULSE := 0.12
 ## Newton's third law (STO-WORLD-005): shoving something that CAN'T
@@ -137,6 +138,9 @@ var _wall_lock := 0.0
 const PUSH_LOCK := 0.16
 var _push_lock := 0.0
 var _pre_move_velocity := Vector3.ZERO
+## Body size multiplier and echo-sight flag (new roster characters).
+var _size := 1.0
+var _blind := false
 
 ## Whether the player wants the mouse captured. We cannot capture in
 ## _ready() — on Wayland that errors until the pointer is actually
@@ -179,6 +183,19 @@ func _ready() -> void:
 	_can_fly = def.get("fly", false)
 	_can_carry = def.get("carry", false)
 	_can_pounce = def.get("pounce", false)
+	# Body size (STO-CHARACTER-037): scale the collision capsule and
+	# eye height with the body, or a bigger character would have its
+	# camera inside its own chest and still fit a normal-sized gap.
+	_size = float(def.get("size", 1.0))
+	_blind = bool(def.get("blind", false))
+	if _size != 1.0:
+		var shape := $CollisionShape3D as CollisionShape3D
+		var cap := (shape.shape as CapsuleShape3D).duplicate() as CapsuleShape3D
+		cap.radius *= _size
+		cap.height *= _size
+		shape.shape = cap
+		shape.position.y *= _size
+		camera.position.y *= _size
 	_cam_base_y = camera.position.y
 	_abilities = def.get("abilities", [])
 	if is_multiplayer_authority():
@@ -190,6 +207,11 @@ func _ready() -> void:
 	var body: Node3D = BodyScript.new()
 	body.name = "Body"
 	body.set("build_human_arms", not _has_arms)
+	# Roster additions (EPI-CHARACTER-NEW-CHARACTERS): distinctive
+	# bodies — Guardian bigger, Builder four-armed, Sniper eared.
+	body.set("size_scale", _size)
+	body.set("extra_arms", bool(def.get("extra_arms", false)))
+	body.set("ears", bool(def.get("ears", false)))
 	add_child(body)
 
 	# Only the Grabber builds the mechanical arms (STO-CHARACTER-001).
@@ -203,6 +225,17 @@ func _ready() -> void:
 		var tail: Node3D = TailScript.new()
 		tail.name = "Tail"
 		add_child(tail)
+
+	# The Sniper is blind and sees by echo (STO-CHARACTER-040). Only
+	# the owning peer needs it — it is a way of SEEING, not a world
+	# object, so remote copies of a Sniper are unaffected.
+	if _blind and is_multiplayer_authority():
+		# Camera renders ONLY the echo layer: the world itself is
+		# never drawn, so the screen is black until something moves.
+		camera.cull_mask = EchoVisionScript.ECHO_LAYER
+		var echo: Node3D = EchoVisionScript.new()
+		echo.name = "EchoVision"
+		add_child(echo)
 
 	# The Flyer has wings (STO-CHARACTER-022).
 	if def.get("wings", false):
