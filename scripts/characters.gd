@@ -33,6 +33,7 @@ static var LIST := [
 		"speed": 5.0, "sprint": 8.0, "jump": 5.5, "health": 80.0,
 		"arms": false, "double_jump": false, "wall_jump": true,
 		"wall_climb": false, "tail": true, "humanoid": true,
+		"pounce": true,
 		"abilities": ["dodge"],
 	},
 	{

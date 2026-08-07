@@ -98,6 +98,27 @@ const ROLL_TIME := 0.4
 var _rolling := false
 var _roll_time := 0.0
 var _roll_dir := Vector3.ZERO
+# Pounce (STO-CHARACTER-032): the Runner crouches while Space is HELD
+# on the ground, then springs forward+up on release. Charge scales the
+# leap; a tap is still a normal jump.
+const POUNCE_MIN_CHARGE := 0.18   # held less than this = ordinary jump
+const POUNCE_MAX_CHARGE := 0.9    # seconds to a full-power pounce
+const POUNCE_FORWARD := 7.5       # forward speed at full charge (halved)
+const POUNCE_UP := 1.12           # up velocity multiplier at full charge
+const POUNCE_CROUCH := 0.35       # how far the camera dips while charging
+## Cooldown (STO-CHARACTER-033): a missed pounce locks the ability for
+## 15 s, but LANDING one on an enemy refunds it instantly — chain
+## pounces as long as you keep connecting.
+const POUNCE_COOLDOWN := 15.0
+const POUNCE_HIT_RANGE := 1.5     # how close counts as connecting
+var _can_pounce := false
+var _pounce_charge := 0.0
+var _pouncing := false
+var _pounce_cd := 0.0
+var _pounce_hit := false
+var _pounce_fill: ColorRect
+var _cam_base_y := 1.6
+
 ## Wall jump: launch away from the wall + up.
 const WALL_JUMP_PUSH := 7.0
 const WALL_JUMP_UP := 1.05
@@ -144,6 +165,8 @@ func _ready() -> void:
 	_spawn_pos = global_position
 	_can_fly = def.get("fly", false)
 	_can_carry = def.get("carry", false)
+	_can_pounce = def.get("pounce", false)
+	_cam_base_y = camera.position.y
 	_abilities = def.get("abilities", [])
 	if is_multiplayer_authority():
 		_build_hud()
@@ -249,6 +272,15 @@ func combo() -> int:
 	return _combo
 
 
+## Seconds left on the pounce cooldown (0 = ready). For HUD/tests.
+func pounce_cooldown() -> float:
+	return maxf(_pounce_cd, 0.0)
+
+
+func is_pouncing() -> bool:
+	return _pouncing
+
+
 func _respawn() -> void:
 	_health = _max_health
 	velocity = Vector3.ZERO
@@ -294,12 +326,37 @@ func _build_hud() -> void:
 		_fuel_fill.size = Vector2(220, 16)
 		fbg.add_child(_fuel_fill)
 
+	# Pounce characters: a bar that empties on use and refills as the
+	# cooldown ticks down — green when ready (STO-CHARACTER-033).
+	if _can_pounce:
+		var pbg := ColorRect.new()
+		pbg.color = Color(0, 0, 0, 0.55)
+		pbg.size = Vector2(224, 20)
+		pbg.anchor_top = 1.0
+		pbg.anchor_bottom = 1.0
+		pbg.offset_left = 20
+		pbg.offset_top = -78
+		pbg.offset_right = 244
+		pbg.offset_bottom = -58
+		hud.add_child(pbg)
+		_pounce_fill = ColorRect.new()
+		_pounce_fill.color = Color(0.3, 0.85, 0.4)
+		_pounce_fill.position = Vector2(2, 2)
+		_pounce_fill.size = Vector2(220, 16)
+		pbg.add_child(_pounce_fill)
+
 
 func _process(_delta: float) -> void:
 	if _hp_fill != null and _max_health > 0.0:
 		_hp_fill.size.x = 220.0 * (_health / _max_health)
 	if _fuel_fill != null:
 		_fuel_fill.size.x = 220.0 * clampf(_fly_fuel / FLY_MAX_FUEL, 0.0, 1.0)
+	if _pounce_fill != null:
+		var ready := 1.0 - clampf(_pounce_cd / POUNCE_COOLDOWN, 0.0, 1.0)
+		_pounce_fill.size.x = 220.0 * ready
+		# Green when ready to leap, amber while recharging.
+		_pounce_fill.color = Color(0.3, 0.85, 0.4) if _pounce_cd <= 0.0 \
+				else Color(0.85, 0.65, 0.2)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -363,12 +420,66 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity += get_gravity() * delta
 
+	# Pounce (STO-CHARACTER-032): holding Space on the ground crouches
+	# and charges; releasing springs forward. Handled BEFORE the normal
+	# jump so a held Space charges instead of hopping.
+	if _can_pounce:
+		if _pounce_cd > 0.0:
+			_pounce_cd -= delta
+		# While airborne on a pounce, connecting with an enemy refunds
+		# the cooldown — reward for actually landing it.
+		if _pouncing and not _pounce_hit:
+			var target := _nearest_enemy(POUNCE_HIT_RANGE)
+			if target != null:
+				_pounce_hit = true
+				_pounce_cd = 0.0
+				DebugOverlay.log("player/abilities", self,
+						"%s: pounce HIT %s — cooldown refunded",
+						[name, target.name])
+		if Input.is_action_pressed("jump") and is_on_floor() \
+				and not _pouncing and _pounce_cd <= 0.0:
+			_pounce_charge += delta
+			# Crouch down as you coil, and hold still.
+			var t := clampf(_pounce_charge / POUNCE_MAX_CHARGE, 0.0, 1.0)
+			camera.position.y = _cam_base_y - POUNCE_CROUCH * t
+			velocity.x = move_toward(velocity.x, 0.0, _speed * 3.0 * delta)
+			velocity.z = move_toward(velocity.z, 0.0, _speed * 3.0 * delta)
+			move_and_slide()
+			return
+		elif _pounce_charge > 0.0:
+			var t := clampf(_pounce_charge / POUNCE_MAX_CHARGE, 0.0, 1.0)
+			camera.position.y = _cam_base_y
+			if _pounce_charge >= POUNCE_MIN_CHARGE:
+				var fwd := -transform.basis.z
+				fwd.y = 0.0
+				fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
+				velocity = fwd * POUNCE_FORWARD * t
+				velocity.y = _jump * (1.0 + (POUNCE_UP - 1.0) * t)
+				_jumps_used = 1
+				_pouncing = true
+				_pounce_hit = false
+				_pounce_cd = POUNCE_COOLDOWN  # refunded if we connect
+				_wall_lock = WALL_JUMP_LOCK  # keep the launch through input
+				DebugOverlay.log("player/abilities", self,
+						"%s: pounce (charge %.2f s, power %.0f%%)",
+						[name, _pounce_charge, t * 100.0])
+			else:
+				velocity.y = _jump  # a tap is just a jump
+				_jumps_used = 1
+			_pounce_charge = 0.0
+		# Only end the pounce once we've actually come back DOWN — on the
+		# launch tick we're still touching the floor with velocity.y > 0.
+		if _pouncing and is_on_floor() and velocity.y <= 0.0:
+			_pouncing = false
+
 	# Jump — from the floor, off a wall (wall-jump characters), or a mid-air
-	# double jump (double-jump characters).
+	# double jump (double-jump characters). Pounce characters handle the
+	# GROUND case above (hold to charge); their air jumps still land here.
 	if Input.is_action_just_pressed("jump"):
 		if is_on_floor():
-			velocity.y = _jump
-			_jumps_used = 1
+			if not _can_pounce:
+				velocity.y = _jump
+				_jumps_used = 1
 		elif _wall_jump and is_on_wall():
 			var n := get_wall_normal()   # points away from the wall
 			velocity.x = n.x * WALL_JUMP_PUSH
@@ -388,8 +499,9 @@ func _physics_process(delta: float) -> void:
 	if _wall_lock > 0.0:
 		_wall_lock -= delta
 
-	if _wall_lock > 0.0:
-		# Keep momentum through a wall-jump launch: only gentle steer.
+	if _wall_lock > 0.0 or (_pouncing and not is_on_floor()):
+		# Keep momentum through a wall-jump launch or a pounce arc:
+		# only gentle steering, never a hard damp to walk speed.
 		if direction:
 			velocity += direction * AIR_CONTROL * delta
 	else:

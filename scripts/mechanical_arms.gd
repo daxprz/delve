@@ -63,9 +63,7 @@ const RAM_COOLDOWN := 0.4           # per-enemy, so one ram = ~one hit
 var _ram_cd: Dictionary = {}
 ## In punch mode the fists are held out in a ready guard in front of the
 ## player (STO-CHARACTER-007), instead of dangling.
-const GUARD_FORWARD := 0.8         # how far in front the fists are held
-const GUARD_HEIGHT := 0.05         # slightly above the shoulder
-const GUARD_LERP := 0.16           # how firmly they hold the guard
+const GUARD_LERP := 0.16           # how firmly the fist holds the punch reach
 
 var _player  # the parent Player (untyped for dynamic property access)
 var _camera: Camera3D
@@ -250,12 +248,11 @@ func _simulate_arm(arm: Dictionary, delta: float) -> void:
 	if grabbed:
 		var target: Vector3 = arm["target"]
 		pts[last] += (target - pts[last]) * GRAB_REACH_LERP
-	elif _punch_mode:
-		# Punch mode: hold the fist in a ready guard, or — if the button is
-		# held — STICK IT STRAIGHT OUT in front (the ram pose).
-		var target := _guard_point(int(arm["side"]))
-		if arm["extended"]:
-			target = _reach_point(int(arm["side"]))
+	elif _punch_mode and arm["extended"]:
+		# Punch mode: the arms hang loose at your sides — no raised
+		# guard pose (STO-CHARACTER-031). Only while the button is HELD
+		# does the fist stick straight out in front (the ram pose).
+		var target := _reach_point(int(arm["side"]))
 		pts[last] += (target - pts[last]) * GUARD_LERP
 
 	# Relaxation: ONLY the shoulder is a hard pin. Segment lengths are
@@ -471,15 +468,6 @@ func _update_fist_look() -> void:
 	else:
 		_fist_mat.albedo_color = Color(0.62, 0.64, 0.68)
 		_fist_mat.emission_enabled = false
-
-
-## Where a fist is held in punch mode: out in front of its shoulder.
-func _guard_point(side: int) -> Vector3:
-	var shoulder := _shoulder_world(side)
-	var fwd := Vector3.FORWARD
-	if _player != null:
-		fwd = -_player.global_transform.basis.z
-	return shoulder + fwd * GUARD_FORWARD + Vector3.UP * GUARD_HEIGHT
 
 
 func toggle_mode() -> void:
