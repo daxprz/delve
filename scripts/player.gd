@@ -14,6 +14,13 @@ const ShockwaveScript := preload("res://scripts/shockwave.gd")
 const CharacterDB := preload("res://scripts/characters.gd")
 ## Per-contact impulse used to push movable RigidBodies (scaled by speed).
 const PUSH_IMPULSE := 0.12
+## Newton's third law (STO-WORLD-005): shoving something that CAN'T
+## move — a box jammed against a wall — pushes you back instead. How
+## much of your blocked motion is returned, scaled by the object's mass
+## relative to a nominal player.
+const PUSH_REACTION := 0.6
+const PUSH_TEST_DIST := 0.05   # probe: can the body move at all?
+const PLAYER_MASS := 70.0
 
 @onready var camera: Camera3D = $Camera3D
 
@@ -124,6 +131,12 @@ const WALL_JUMP_PUSH := 7.0
 const WALL_JUMP_UP := 1.05
 const WALL_JUMP_LOCK := 0.25   # seconds the launch carries before input takes over
 var _wall_lock := 0.0
+## Brief window after being shoved back by a jammed object, during
+## which walk input can't simply overwrite the rebound
+## (STO-WORLD-005) — same trick as the wall-jump launch.
+const PUSH_LOCK := 0.16
+var _push_lock := 0.0
+var _pre_move_velocity := Vector3.ZERO
 
 ## Whether the player wants the mouse captured. We cannot capture in
 ## _ready() — on Wayland that errors until the pointer is actually
@@ -505,8 +518,11 @@ func _physics_process(delta: float) -> void:
 
 	if _wall_lock > 0.0:
 		_wall_lock -= delta
+	if _push_lock > 0.0:
+		_push_lock -= delta
 
-	if _wall_lock > 0.0 or (_pouncing and not is_on_floor()):
+	if _wall_lock > 0.0 or _push_lock > 0.0 \
+			or (_pouncing and not is_on_floor()):
 		# Keep momentum through a wall-jump launch or a pounce arc:
 		# only gentle steering, never a hard damp to walk speed.
 		if direction:
@@ -519,6 +535,10 @@ func _physics_process(delta: float) -> void:
 			velocity.x = move_toward(velocity.x, 0.0, _speed)
 			velocity.z = move_toward(velocity.z, 0.0, _speed)
 
+	# move_and_slide() rewrites `velocity` with the RESOLVED motion, so
+	# a blocked push reads as ~0 afterwards. Keep what we intended, so
+	# the push reaction knows how hard we were actually shoving.
+	_pre_move_velocity = velocity
 	move_and_slide()
 
 	_push_rigid_bodies()
@@ -871,10 +891,42 @@ func _push_rigid_bodies() -> void:
 		var col := get_slide_collision(i)
 		var collider := col.get_collider()
 		if collider is RigidBody3D:
+			var rb := collider as RigidBody3D
 			var push := -col.get_normal()
 			push.y = 0.0  # push sideways, don't shove things into the floor
+			if push.length() < 0.001:
+				continue
+			push = push.normalized()
 			# When blocked against the box our speed drops to ~0, so use a
 			# minimum push so contact still shoves it.
 			var speed := Vector2(velocity.x, velocity.z).length()
-			(collider as RigidBody3D).apply_central_impulse(
-					push.normalized() * PUSH_IMPULSE * maxf(speed, 2.0))
+			rb.apply_central_impulse(push * PUSH_IMPULSE * maxf(speed, 2.0))
+
+			# If the thing we're shoving has nowhere to go, the push
+			# comes back into US (STO-WORLD-005).
+			if not _body_can_move(rb, push):
+				# How hard we were shoving BEFORE the collision ate it.
+				var into := _pre_move_velocity.dot(push)
+				if into > 0.0:
+					# Rebound is a FRACTION of the push we were making,
+					# scaled by how heavy the thing is: a light crate
+					# jammed against a wall just stops you with a nudge,
+					# something heavy genuinely shoves you back.
+					var mass_ratio := clampf(rb.mass / PLAYER_MASS, 0.25, 1.5)
+					velocity -= push * into * PUSH_REACTION * mass_ratio
+					# Hold the rebound briefly, or the walk input would
+					# overwrite velocity on the very next tick.
+					_push_lock = PUSH_LOCK
+					DebugOverlay.log("player/movement", self,
+							"%s: shoved %s into something solid — pushed back %.1f m/s",
+							[name, rb.name, into * PUSH_REACTION * mass_ratio])
+
+
+## Can this body actually move in `dir`, or is it jammed against
+## something solid? Probes a short test motion (STO-WORLD-005).
+func _body_can_move(rb: RigidBody3D, dir: Vector3) -> bool:
+	var params := PhysicsTestMotionParameters3D.new()
+	params.from = rb.global_transform
+	params.motion = dir * PUSH_TEST_DIST
+	params.exclude_bodies = [get_rid()]
+	return not PhysicsServer3D.body_test_motion(rb.get_rid(), params)
