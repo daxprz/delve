@@ -37,6 +37,7 @@ func _setup() -> bool:
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	main.host_game()
+	main.start_game()   # the lobby no longer starts the game for you
 	_runner = main.get_node_or_null("Players/1")
 	if _runner == null:
 		_fail("no Runner spawned")

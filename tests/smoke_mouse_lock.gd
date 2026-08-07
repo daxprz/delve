@@ -21,7 +21,8 @@ func _physics_process(_delta: float) -> bool:
 			_main = load("res://scenes/main.tscn").instantiate()
 			root.add_child(_main)
 			_check(not _main.mouse_locked, "mouse free in the menu")
-			_main.host_game(true)  # as the Host button does (bind(true))
+			_main.host_game(true)
+			_main.start_game()
 			_phase = "playing"
 		"playing":
 			_check(_main.mouse_locked,

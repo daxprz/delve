@@ -21,6 +21,7 @@ func _setup() -> bool:
 	root.add_child(_main)
 	_box = _main.get_node_or_null("Playground/MovableBox") as RigidBody3D
 	_main.host_game()
+	_main.start_game()   # the lobby no longer starts the game for you
 	_player = _main.get_node_or_null("Players/1") as CharacterBody3D
 	if _player == null or _box == null:
 		_fail("missing player or box")

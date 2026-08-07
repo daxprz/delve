@@ -35,6 +35,14 @@ var _pause_menu: CanvasLayer
 var _address_edit: LineEdit
 var _map_seed := 0
 var _server_list: VBoxContainer
+## Lobby (STO-UI-004): everyone gathers, picks a character and can see
+## who else is here before the host starts the game.
+var _in_lobby := false
+var _started := false
+var _lobby_chars: Dictionary = {}     # peer id -> character index
+var _lobby_ui: CanvasLayer
+var _lobby_list: VBoxContainer
+var _start_button: Button
 
 
 func _ready() -> void:
@@ -48,6 +56,8 @@ func _ready() -> void:
 	$Menu/UI/VBox/HostButton.pressed.connect(host_game.bind(true))
 	$Menu/UI/VBox/JoinButton.pressed.connect(join_game.bind(true))
 	_build_address_field()
+	_build_ui_scale_row($Menu/UI/VBox)
+	_build_lobby()
 
 	# Build the obstacle playground (EPI-WORLD-PLAYGROUND).
 	var playground: Node3D = PlaygroundScript.new()
@@ -72,6 +82,7 @@ func _ready() -> void:
 	var user_args := OS.get_cmdline_user_args()
 	if user_args.has("--server"):
 		host_game()
+		start_game()   # automation wants to play, not sit in a lobby
 	elif user_args.has("--client"):
 		var idx := user_args.find("--client")
 		if idx + 1 < user_args.size() and not user_args[idx + 1].begins_with("--"):
@@ -91,36 +102,20 @@ func _build_character_select() -> void:
 	vbox.add_child(label)
 	vbox.move_child(label, 0)
 
-	var row := HBoxContainer.new()
-	row.name = "CharRow"
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 12)
-	vbox.add_child(row)
+	var row := _build_character_row(vbox, "CharRow")
 	vbox.move_child(row, 1)
-
-	for i in CharacterDB.count():
-		var def := CharacterDB.get_def(i)
-		var btn := Button.new()
-		btn.name = "Char%d" % i
-		btn.text = str(def["name"])
-		btn.toggle_mode = true
-		btn.custom_minimum_size = Vector2(110, 40)
-		btn.pressed.connect(_on_character_pressed.bind(i))
-		row.add_child(btn)
-		_char_buttons.append(btn)
-
-	_update_character_buttons()
-
-
-func _on_character_pressed(index: int) -> void:
-	CharacterDB.selected_index = index
-	_update_character_buttons()
 
 
 func _update_character_buttons() -> void:
+	# set_pressed_no_signal, NOT button_pressed: assigning the property
+	# re-emits the button's signals, which called _choose_character
+	# again and respawned the player on every refresh. With three
+	# character rows now (menu, lobby, pause) that fired constantly.
 	for i in _char_buttons.size():
 		var btn: Button = _char_buttons[i]
-		btn.button_pressed = (i == CharacterDB.selected_index)
+		if is_instance_valid(btn):
+			btn.set_pressed_no_signal(
+					(i % CharacterDB.count()) == CharacterDB.selected_index)
 
 
 ## Enemies belong to the SERVER (STO-CORE-005). They are instanced
@@ -142,6 +137,50 @@ func _spawn_enemies() -> void:
 		enemy.name = "Enemy%d" % i
 		enemy.position = ENEMY_SPAWNS[i]
 		container.add_child(enemy, true)
+
+
+## A "UI size: [-] 2x [+]" row (STO-UI-003). Added to both the main
+## menu and the pause menu, because if the UI is too small to read you
+## need to be able to fix it from wherever you are — including after
+## you have already started playing.
+func _build_ui_scale_row(parent: Control) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "UIScaleRow"
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 8)
+
+	var label := Label.new()
+	label.text = "UI size:"
+	row.add_child(label)
+
+	var smaller := Button.new()
+	smaller.name = "Smaller"
+	smaller.text = "−"
+	smaller.custom_minimum_size = Vector2(40, 32)
+	row.add_child(smaller)
+
+	var value := Label.new()
+	value.name = "Value"
+	value.text = Settings.ui_scale_label()
+	value.custom_minimum_size = Vector2(56, 0)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_child(value)
+
+	var bigger := Button.new()
+	bigger.name = "Bigger"
+	bigger.text = "+"
+	bigger.custom_minimum_size = Vector2(40, 32)
+	row.add_child(bigger)
+
+	smaller.pressed.connect(func() -> void: Settings.step_ui_scale(-1))
+	bigger.pressed.connect(func() -> void: Settings.step_ui_scale(1))
+	# Every row follows the setting, so the two menus never disagree.
+	Settings.ui_scale_changed.connect(func(_s: float) -> void:
+		if is_instance_valid(value):
+			value.text = Settings.ui_scale_label())
+
+	parent.add_child(row)
+	return row
 
 
 ## Drop anything we built locally before joining — the server's copies
@@ -218,6 +257,9 @@ func _build_pause_menu() -> void:
 	resume.pressed.connect(_toggle_pause)
 	vbox.add_child(resume)
 
+	# Fixing an unreadable UI must be possible mid-game too.
+	_build_ui_scale_row(vbox)
+
 	var to_menu := Button.new()
 	to_menu.name = "MainMenuButton"
 	to_menu.text = "Main Menu"
@@ -261,10 +303,10 @@ func host_game(capture_mouse := false) -> void:
 	if Network.host() != OK:
 		return
 	menu.hide()
-	_in_game = true
+	_lobby_chars = {1: CharacterDB.selected_index}
+	_open_lobby(true)
 	if capture_mouse:
-		_set_mouse_locked(true)
-	_spawn_player(1)
+		_set_mouse_locked(false)   # the lobby needs the cursor
 
 
 ## Address box under the Join button (STO-TOOLS-004). Without this a
@@ -347,17 +389,31 @@ func join_game(capture_mouse := false) -> void:
 	# our own, and wait for its versions (STO-CORE-005/006).
 	_clear_local_world()
 	menu.hide()
-	_in_game = true
+	_open_lobby(false)
 	if capture_mouse:
-		_set_mouse_locked(true)
+		_set_mouse_locked(false)   # the lobby needs the cursor
+	# Tell the host who we are playing as (it may not be connected
+	# yet, so also re-announced on connection below).
+	_announce_character.rpc_id(1, CharacterDB.selected_index)
 
 
 func _on_peer_connected(id: int) -> void:
-	if multiplayer.is_server():
-		# Send our map seed first, so the joiner is standing in the
-		# same maze before their player appears in it.
-		_receive_map_seed.rpc_id(id, _map_seed)
+	if not multiplayer.is_server():
+		return
+	# Send our map seed first, so the joiner is standing in the same
+	# maze before their player appears in it.
+	_receive_map_seed.rpc_id(id, _map_seed)
+	if _started:
+		# Joining a game already in progress: straight in. The joiner
+		# must be TOLD the game is running, or it sits on its own lobby
+		# screen forever while its player stands in the world.
+		_lobby_chars[id] = _lobby_chars.get(id, 0)
+		_begin_game.rpc_id(id)
 		_spawn_player(id)
+	else:
+		if not _lobby_chars.has(id):
+			_lobby_chars[id] = 0
+		_broadcast_lobby()
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -371,8 +427,12 @@ func _spawn_player(id: int) -> void:
 	DebugOverlay.log("network/spawn", self, "spawning player for peer %d", [id])
 	var player: CharacterBody3D = PLAYER_SCENE.instantiate()
 	player.name = str(id)  # peer id doubles as node name -> authority
+	# The character choice travels WITH the spawn, so everyone sees
+	# each other as what they actually picked. Previously only the
+	# owner knew, and remote copies all appeared as the Grabber.
+	player.character = int(_lobby_chars.get(id, CharacterDB.selected_index))
 	player.position = spawn_position_for_peer(id)
-	players.add_child(player)
+	players.add_child(player, true)
 
 
 ## Where a given peer appears (STO-CORE-004).
@@ -404,3 +464,245 @@ func spawn_position_for_peer(id: int) -> Vector3:
 	var angle := float(h % 36000) / 36000.0 * TAU
 	var radius := SPAWN_RING_RADIUS + float((h / 36000) % 100) / 100.0 * 1.4
 	return base + Vector3(cos(angle), 0.0, sin(angle)) * radius
+
+
+# ---------------------------------------------------------------------
+# Lobby (STO-UI-004 / STO-UI-005)
+# ---------------------------------------------------------------------
+#
+# Host and Join used to drop you straight into the world, alone, with
+# no idea whether anyone else had arrived. Now everyone gathers in a
+# lobby first: you can see who is here, change character while you
+# wait, and the host decides when to begin.
+#
+# Character choices are shared so the list is meaningful — and the
+# choice now rides along when a player spawns, which also fixes remote
+# players all appearing as the Grabber regardless of what they picked.
+
+func _build_lobby() -> void:
+	_lobby_ui = CanvasLayer.new()
+	_lobby_ui.name = "Lobby"
+	_lobby_ui.visible = false
+	add_child(_lobby_ui)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0.05, 0.06, 0.09, 0.92)
+	dim.anchor_right = 1.0
+	dim.anchor_bottom = 1.0
+	_lobby_ui.add_child(dim)
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "VBox"
+	vbox.anchor_left = 0.5
+	vbox.anchor_top = 0.5
+	vbox.anchor_right = 0.5
+	vbox.anchor_bottom = 0.5
+	vbox.offset_left = -260
+	vbox.offset_top = -220
+	vbox.offset_right = 260
+	vbox.offset_bottom = 220
+	vbox.add_theme_constant_override("separation", 12)
+	dim.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Lobby"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	vbox.add_child(title)
+
+	var who := Label.new()
+	who.name = "Players"
+	who.text = "Players:"
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(who)
+
+	_lobby_list = VBoxContainer.new()
+	_lobby_list.name = "PlayerList"
+	_lobby_list.add_theme_constant_override("separation", 4)
+	vbox.add_child(_lobby_list)
+
+	vbox.add_child(HSeparator.new())
+
+	var pick := Label.new()
+	pick.text = "Your character:"
+	pick.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(pick)
+	_build_character_row(vbox, "LobbyCharRow")
+
+	_build_ui_scale_row(vbox)
+
+	_start_button = Button.new()
+	_start_button.name = "StartButton"
+	_start_button.text = "Start game"
+	_start_button.custom_minimum_size = Vector2(220, 46)
+	_start_button.pressed.connect(start_game)
+	vbox.add_child(_start_button)
+
+	var leave := Button.new()
+	leave.name = "LeaveButton"
+	leave.text = "Leave"
+	leave.custom_minimum_size = Vector2(220, 34)
+	leave.pressed.connect(_to_main_menu)
+	vbox.add_child(leave)
+
+
+## A row of character buttons. Used by the main menu, the lobby and
+## the pause menu, so switching character is possible from anywhere
+## (STO-UI-005).
+func _build_character_row(parent: Control, row_name: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = row_name
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 10)
+	for i in CharacterDB.count():
+		var def := CharacterDB.get_def(i)
+		var btn := Button.new()
+		btn.name = "Char%d" % i
+		btn.text = str(def["name"])
+		btn.toggle_mode = true
+		btn.custom_minimum_size = Vector2(104, 38)
+		btn.pressed.connect(_choose_character.bind(i))
+		row.add_child(btn)
+		_char_buttons.append(btn)
+	parent.add_child(row)
+	_update_character_buttons()
+	return row
+
+
+## Pick a character from anywhere. In the lobby this tells everyone
+## else; in game it respawns you as the new one.
+func _choose_character(index: int) -> void:
+	if index == CharacterDB.selected_index and _started:
+		return          # already playing as this one; nothing to do
+	CharacterDB.selected_index = index
+	_update_character_buttons()
+	if multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer is not OfflineMultiplayerPeer:
+		var me := multiplayer.get_unique_id()
+		_lobby_chars[me] = index
+		if multiplayer.is_server():
+			_broadcast_lobby()
+		else:
+			_announce_character.rpc_id(1, index)
+	if _started:
+		_respawn_as_selected()
+
+
+## Swap the character you are playing without leaving the game
+## (STO-UI-005): the old body goes, a new one arrives at your spawn.
+func _respawn_as_selected() -> void:
+	var me := 1
+	if multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer is not OfflineMultiplayerPeer:
+		me = multiplayer.get_unique_id()
+	if multiplayer.is_server():
+		_replace_player(me, CharacterDB.selected_index)
+	else:
+		_request_respawn.rpc_id(1, CharacterDB.selected_index)
+
+
+## Only the server may add or remove player nodes, so a client asks.
+@rpc("any_peer", "call_remote", "reliable")
+func _request_respawn(index: int) -> void:
+	if not multiplayer.is_server():
+		return
+	_replace_player(multiplayer.get_remote_sender_id(), index)
+
+
+func _replace_player(id: int, index: int) -> void:
+	_lobby_chars[id] = index
+	var old := players.get_node_or_null(str(id))
+	if old != null:
+		old.name = "%dOld" % id     # free the name now; freeing is deferred
+		old.queue_free()
+	_spawn_player(id)
+
+
+func _open_lobby(is_host: bool) -> void:
+	_in_lobby = true
+	_started = false
+	_in_game = false
+	if _lobby_ui != null:
+		_lobby_ui.visible = true
+	if _start_button != null:
+		_start_button.visible = is_host
+		_start_button.disabled = not is_host
+	_refresh_lobby()
+
+
+## Host only: everyone into the world.
+func start_game() -> void:
+	if not multiplayer.is_server():
+		return
+	_begin_game.rpc()
+	_begin_game()
+	for id in _lobby_chars.keys():
+		if int(id) == 1 or multiplayer.get_peers().has(int(id)):
+			_spawn_player(int(id))
+
+
+@rpc("authority", "call_remote", "reliable")
+func _begin_game() -> void:
+	_in_lobby = false
+	_started = true
+	_in_game = true
+	if _lobby_ui != null:
+		_lobby_ui.visible = false
+	_set_mouse_locked(true)
+
+
+## A client telling the host which character it picked.
+@rpc("any_peer", "call_remote", "reliable")
+func _announce_character(index: int) -> void:
+	if not multiplayer.is_server():
+		return
+	_lobby_chars[multiplayer.get_remote_sender_id()] = index
+	_broadcast_lobby()
+
+
+func _broadcast_lobby() -> void:
+	if not multiplayer.is_server():
+		return
+	_sync_lobby.rpc(_lobby_chars)
+	_refresh_lobby()
+
+
+@rpc("authority", "call_remote", "reliable")
+func _sync_lobby(chars: Dictionary) -> void:
+	_lobby_chars = chars.duplicate()
+	_refresh_lobby()
+
+
+func _refresh_lobby() -> void:
+	if _lobby_list == null:
+		return
+	for c in _lobby_list.get_children():
+		c.queue_free()
+	var me := 1
+	if multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer is not OfflineMultiplayerPeer:
+		me = multiplayer.get_unique_id()
+	var ids := _lobby_chars.keys()
+	ids.sort()
+	for id in ids:
+		var label := Label.new()
+		var who := "Host" if int(id) == 1 else "Player %d" % int(id)
+		if int(id) == me:
+			who += " (you)"
+		label.text = "%s — %s" % [who,
+				str(CharacterDB.get_def(int(_lobby_chars[id]))["name"])]
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_lobby_list.add_child(label)
+
+
+## Who is in the lobby and what they picked (for tests).
+func lobby_players() -> Dictionary:
+	return _lobby_chars
+
+
+func in_lobby() -> bool:
+	return _in_lobby
+
+
+func game_started() -> bool:
+	return _started

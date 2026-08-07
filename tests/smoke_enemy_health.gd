@@ -17,6 +17,7 @@ func _setup() -> bool:
 	_main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_main)
 	_main.host_game()
+	_main.start_game()   # the lobby no longer starts the game for you
 	var enemies := _main.get_node_or_null("Enemies")
 	if enemies == null or enemies.get_child_count() == 0:
 		_fail("no enemies")

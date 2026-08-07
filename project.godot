@@ -17,6 +17,7 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 
 [autoload]
 
+Settings="*res://scripts/autoload/settings.gd"
 DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
 DebugAspects="*res://scripts/autoload/debug_aspects.gd"
 DebugPanel="*res://scripts/autoload/debug_panel.gd"

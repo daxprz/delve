@@ -22,7 +22,8 @@ func _setup() -> bool:
 		return false
 	var main := packed.instantiate()
 	root.add_child(main)
-	main.host_game()  # spawns Players/1
+	main.host_game()
+	main.start_game()   # the lobby no longer starts the game for you
 
 	var player := main.get_node_or_null("Players/1")
 	if player == null:

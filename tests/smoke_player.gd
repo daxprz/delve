@@ -36,6 +36,7 @@ func _setup() -> bool:
 	root.add_child(_main)
 	# Players spawn on host/join since STO-CORE-003 — host to get one.
 	_main.host_game()
+	_main.start_game()   # the lobby no longer starts the game for you
 	_player = _main.get_node_or_null("Players/1") as CharacterBody3D
 	if _player == null:
 		_fail("no player node at Players/1 after host_game()")

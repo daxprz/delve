@@ -26,6 +26,7 @@ func _physics_process(_delta: float) -> bool:
 		_main = load("res://scenes/main.tscn").instantiate()
 		root.add_child(_main)
 		_main.host_game()
+		_main.start_game()   # the lobby no longer starts the game for you
 		print("HOST: hosting, waiting for client")
 		_phase = "wait_client"
 		return false

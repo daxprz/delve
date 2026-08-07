@@ -60,6 +60,7 @@ func _setup() -> bool:
 
 	# Spawn a player and place it just behind the box, facing it (-Z).
 	_main.host_game()
+	_main.start_game()   # the lobby no longer starts the game for you
 	_player = _main.get_node_or_null("Players/1") as CharacterBody3D
 	if _player == null:
 		_fail("no player to push with")

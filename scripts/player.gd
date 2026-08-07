@@ -25,9 +25,12 @@ const PLAYER_MASS := 70.0
 
 @onready var camera: Camera3D = $Camera3D
 
-## Which character this player is (index into CharacterDB.LIST). Applied
-## in _ready. Defaults to 0 (Grabber).
-var character := 0
+## Which character this player is (index into CharacterDB.LIST).
+## -1 means "nobody told us": a player instanced directly (tests,
+## single-player) then falls back to the menu selection. When main.gd
+## spawns us it sets this explicitly from the lobby, and the value
+## rides along with the spawn so every peer builds the same body.
+var character := -1
 # Stats filled in from the character def in _ready.
 var _speed := 5.0
 var _sprint_speed := 5.0
@@ -224,8 +227,11 @@ func _ready() -> void:
 	# Only the owning peer looks through this player's camera.
 	camera.current = is_multiplayer_authority()
 
-	# The local (authoritative) player spawns as the selected character.
-	if is_multiplayer_authority():
+	# Set by whoever spawned us (main.gd) from the lobby choice, and
+	# carried along with the spawn so every peer builds the same body.
+	# It used to be read from CharacterDB here on the owner only, so
+	# remote players all appeared as the Grabber.
+	if character < 0:
 		character = CharacterDB.selected_index
 
 	# Apply the character definition (STO-CHARACTER-004/005).
