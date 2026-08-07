@@ -50,13 +50,6 @@ void fragment() {
 ## mechanical arms attach at the shoulders instead. Set before _ready.
 var build_human_arms := true
 
-## Overall body size (STO-CHARACTER-037): 1.0 is normal, the Guardian
-## is bigger. Scales bone lengths, segment sizes and stance height.
-var size_scale := 1.0
-
-## A SECOND pair of arms below the first (STO-CHARACTER-039, Builder).
-var extra_arms := false
-
 ## Big ears on the head (STO-CHARACTER-038, Sniper).
 var ears := false
 
@@ -134,16 +127,6 @@ func _ready() -> void:
 		_thigh_len = THIGH_LEN * _leg_scale
 		_shin_len = SHIN_LEN * _leg_scale
 		_base_pelvis_y *= _leg_scale
-	# Overall size on top of any per-individual variation.
-	if size_scale != 1.0:
-		_leg_scale *= size_scale
-		_arm_scale *= size_scale
-		_torso_scale *= size_scale
-		_head_scale *= size_scale
-		_bulk *= size_scale
-		_thigh_len *= size_scale
-		_shin_len *= size_scale
-		_base_pelvis_y *= size_scale
 	_body_mat = _make_material()
 	_build()
 	set_process(true)
@@ -271,14 +254,6 @@ func _build() -> void:
 		_seg(shoulder, Vector3(0.15, 0.15, 0.15), Vector3.ZERO)
 		if build_human_arms:
 			_build_arm(shoulder, s, ar, "")
-		# Builder: a SECOND pair of arms below the first
-		# (STO-CHARACTER-039). Slightly shorter, so they read as a
-		# lower pair rather than a duplicate.
-		if extra_arms:
-			var shoulder2 := _joint(torso, "LowerShoulder" + s,
-					Vector3(0.24 * bk * side, -0.04 * to, 0.02))
-			_seg(shoulder2, Vector3(0.13, 0.13, 0.13), Vector3.ZERO)
-			_build_arm(shoulder2, s, ar * 0.85, "Lower")
 
 		# Legs
 		var hip := _joint(_pelvis, "Hip" + s, Vector3(0.12 * bk * side, -0.08, 0.0))

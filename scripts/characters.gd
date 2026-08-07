@@ -44,35 +44,17 @@ static var LIST := [
 		"wall_climb": false, "tail": false, "humanoid": true,
 		"fly": true, "wings": true, "carry": true,
 	},
-	# --- Blank-slate roster additions (EPI-CHARACTER-NEW-CHARACTERS).
-	# Distinctive BODIES now; their play-style powers are later epics.
-	{
-		"id": "guardian", "name": "Guardian",
-		"color": Color(0.35, 0.75, 0.55),
-		"speed": 4.2, "sprint": 5.0, "jump": 4.8, "health": 220.0,
-		"arms": false, "double_jump": false, "wall_jump": false,
-		"wall_climb": false, "tail": false, "humanoid": true,
-		"size": 1.35,          # STO-CHARACTER-037: the big one
-		"abilities": [],
-	},
+	# --- Roster addition (EPI-CHARACTER-NEW-CHARACTERS). The Guardian
+	# and Builder were removed on 2026-08-07 at the operator's request;
+	# only the Sniper remains.
 	{
 		"id": "sniper", "name": "Sniper",
 		"color": Color(0.8, 0.8, 0.35),
 		"speed": 5.0, "sprint": 6.5, "jump": 4.8, "health": 65.0,
 		"arms": false, "double_jump": false, "wall_jump": false,
 		"wall_climb": false, "tail": false, "humanoid": true,
-		"size": 0.95,
 		"ears": true,          # STO-CHARACTER-038
 		"blind": true,         # STO-CHARACTER-040: sees by echo only
-		"abilities": [],
-	},
-	{
-		"id": "builder", "name": "Builder",
-		"color": Color(0.6, 0.45, 0.85),
-		"speed": 4.8, "sprint": 5.6, "jump": 4.5, "health": 110.0,
-		"arms": false, "double_jump": false, "wall_jump": false,
-		"wall_climb": false, "tail": false, "humanoid": true,
-		"extra_arms": true,    # STO-CHARACTER-039: four arms
 		"abilities": [],
 	},
 ]

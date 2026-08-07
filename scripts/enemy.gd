@@ -279,6 +279,24 @@ func trip(impulse: Vector3) -> void:
 	_knockdown(Vector3(dv.x, maxf(dv.y, 2.0), dv.z), true)
 
 
+## Put this enemy instantly back on its feet, discarding any ragdoll.
+## Note a ragdolling enemy's POSITION is driven by its pelvis, so it
+## must be recovered before it can be repositioned — moving the node
+## alone would be undone on the next tick.
+func recover() -> void:
+	if _ragdoll != null:
+		_exit_ragdoll(true)
+	_downed = 0.0
+	_getup = 0.0
+	_stumble = 0.0
+	_stagger = 0.0
+	_body_angle = 0.0
+	if _body != null:
+		_body.transform.basis = Basis()
+		_body.set_process(true)
+	velocity = Vector3.ZERO
+
+
 func is_downed() -> bool:
 	return _ragdoll != null or _getup > 0.0
 

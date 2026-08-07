@@ -138,8 +138,7 @@ var _wall_lock := 0.0
 const PUSH_LOCK := 0.16
 var _push_lock := 0.0
 var _pre_move_velocity := Vector3.ZERO
-## Body size multiplier and echo-sight flag (new roster characters).
-var _size := 1.0
+## Echo-sight flag (the Sniper sees by sound alone).
 var _blind := false
 
 ## Whether the player wants the mouse captured. We cannot capture in
@@ -183,19 +182,7 @@ func _ready() -> void:
 	_can_fly = def.get("fly", false)
 	_can_carry = def.get("carry", false)
 	_can_pounce = def.get("pounce", false)
-	# Body size (STO-CHARACTER-037): scale the collision capsule and
-	# eye height with the body, or a bigger character would have its
-	# camera inside its own chest and still fit a normal-sized gap.
-	_size = float(def.get("size", 1.0))
 	_blind = bool(def.get("blind", false))
-	if _size != 1.0:
-		var shape := $CollisionShape3D as CollisionShape3D
-		var cap := (shape.shape as CapsuleShape3D).duplicate() as CapsuleShape3D
-		cap.radius *= _size
-		cap.height *= _size
-		shape.shape = cap
-		shape.position.y *= _size
-		camera.position.y *= _size
 	_cam_base_y = camera.position.y
 	_abilities = def.get("abilities", [])
 	if is_multiplayer_authority():
@@ -207,10 +194,7 @@ func _ready() -> void:
 	var body: Node3D = BodyScript.new()
 	body.name = "Body"
 	body.set("build_human_arms", not _has_arms)
-	# Roster additions (EPI-CHARACTER-NEW-CHARACTERS): distinctive
-	# bodies — Guardian bigger, Builder four-armed, Sniper eared.
-	body.set("size_scale", _size)
-	body.set("extra_arms", bool(def.get("extra_arms", false)))
+	# The Sniper has big listening ears (STO-CHARACTER-038).
 	body.set("ears", bool(def.get("ears", false)))
 	add_child(body)
 

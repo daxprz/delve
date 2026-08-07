@@ -54,6 +54,8 @@ const BODY_FRICTION := 0.55       # velocity kept when the tail rubs the body
 const RAY_MASK := 1
 
 var _hit_cd: Dictionary = {}
+## Per-point swing velocity captured before the constraint solver.
+var _swing_vel: PackedVector3Array
 
 var _player
 var _points: PackedVector3Array
@@ -77,6 +79,7 @@ func _ready() -> void:
 		p.y = maxf(p.y, FLOOR_Y)  # don't start below the floor (avoids a launch)
 		_points.append(p)
 	_prev = _points.duplicate()  # start at rest (no velocity spike)
+	_swing_vel.resize(_points.size())
 
 	for i in segment_count:
 		var part := Node3D.new()
@@ -131,6 +134,11 @@ func _physics_process(delta: float) -> void:
 		moved += (ideal - moved) * BEHIND_PULL
 		_points[i] = moved
 		_prev[i] = old
+		# Swing speed for damage/trips is measured HERE, before the
+		# solver and the body push-out damp it (STO-CHARACTER-042).
+		# Otherwise a tail whipping close to the player's own body has
+		# its velocity bled away and stops hurting anything.
+		_swing_vel[i] = (moved - old) / delta
 
 	for _iter in SOLVER_ITERATIONS:
 		_points[0] = base
@@ -161,7 +169,7 @@ func _physics_process(delta: float) -> void:
 	# swipe velocity. Orange = damage speed, red = trip speed.
 	if DebugOverlay.should_draw("player/tail", _player):
 		for i in range(2, _points.size()):
-			var gvel := (_points[i] - _prev[i]) / delta
+			var gvel: Vector3 = _swing_vel[i]
 			var gspeed := gvel.length()
 			if gspeed < TAIL_MIN_SPEED:
 				continue
@@ -252,17 +260,12 @@ func _hit_enemies(delta: float) -> void:
 		_hit_cd[key] = float(_hit_cd[key]) - delta
 	# Check the outer (faster) segments against each enemy.
 	for i in range(2, _points.size()):
-		var vel := (_points[i] - _prev[i]) / delta
+		var vel: Vector3 = _swing_vel[i]
 		var speed := vel.length()
 		if speed < TAIL_MIN_SPEED:
 			continue
 		for e in enemies:
 			if not is_instance_valid(e):
-				continue
-			# Already knocked down? Don't sweep them again — repeatedly
-			# tripping a ragdolling enemy re-shoved it every contact
-			# (STO-ENEMIES-009). They're down; leave them be.
-			if e.has_method("is_downed") and e.call("is_downed"):
 				continue
 			var node := e as Node3D
 			var eid := node.get_instance_id()
@@ -276,8 +279,17 @@ func _hit_enemies(delta: float) -> void:
 				elif node.has_method("take_damage"):
 					node.call("take_damage", dmg)
 					_hit_cd[eid] = TAIL_HIT_COOLDOWN
-				# A hard swipe sweeps them off their feet (STO-ENEMIES-004).
-				if speed >= TAIL_TRIP_SPEED and node.has_method("trip"):
+				# A hard swipe sweeps them off their feet
+				# (STO-ENEMIES-004) — but only if they're still ON their
+				# feet. Re-tripping an enemy that is already ragdolling
+				# re-shoved its parts on every contact, which fed back
+				# into the tail and blew both up (STO-ENEMIES-009).
+				# Damage still lands on a downed enemy; damage alone
+				# moves nothing, so it cannot loop.
+				var downed: bool = node.has_method("is_downed") \
+						and node.call("is_downed")
+				if not downed and speed >= TAIL_TRIP_SPEED \
+						and node.has_method("trip"):
 					var push := Vector3(vel.x, 0.0, vel.z) * TAIL_TRIP_SCALE
 					push = push.limit_length(TAIL_TRIP_MAX)
 					node.call("trip", push + Vector3.UP * 2.5)

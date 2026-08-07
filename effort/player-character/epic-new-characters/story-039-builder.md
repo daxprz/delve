@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: character
 size: S
-status: shipped
+status: abandoned
 date: 2026-08-07
 depends-on: []
 bd-id: delve-7y2
@@ -14,6 +14,11 @@ complete: 5
 ---
 
 # Builder character (blank slate)
+
+
+> **ABANDONED 2026-08-07.** The operator asked to remove this
+> character. All of its code was reverted; see the epic for what was
+> kept and what went.
 
 ## Summary
 

@@ -11,6 +11,16 @@ shipped: 2026-08-07
 
 # Three new characters: Guardian, Sniper, Builder (blank slates)
 
+> **GUARDIAN AND BUILDER REMOVED 2026-08-07.** The operator asked to
+> get rid of both. Their character defs, the Body's `size_scale` and
+> `extra_arms` features, the player's capsule/camera scaling and
+> `tests/smoke_new_characters.gd` were all reverted; stories 037 and
+> 039 are abandoned. Only the **Sniper** remains from this epic
+> (stories 038/040/041), and the roster is back to four characters.
+> Kept from the Builder work: `Body._build_arm()` and per-arm side
+> tracking, which fixed a real bug — the walk-swing code had always
+> assumed exactly two arms.
+
 ## Summary
 
 Adds three new characters to the roster. Their **play-style powers**

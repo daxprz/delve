@@ -31,6 +31,11 @@ func _park_all() -> void:
 	for i in _enemies.get_child_count():
 		var e := _enemies.get_child(i) as Node3D
 		if e != null:
+			# A ragdolling enemy's position is driven by its pelvis, so
+			# it would snap straight back next to the player and steal
+			# the next ability's targeting. Stand it up first.
+			if e.has_method("recover"):
+				e.call("recover")
 			e.global_position = Vector3(300.0 + i * 6.0, 1.0, 300.0)
 			(e as CharacterBody3D).velocity = Vector3.ZERO
 
@@ -83,8 +88,7 @@ func _physics_process(_delta: float) -> bool:
 				e.velocity = Vector3.ZERO
 				_player.do_parry()
 			if _frames >= 3:
-				if not is_instance_valid(e) or e.velocity.z < -4.0 \
-						or e.global_position.z < -2.5:
+				if _launched(e, -4.0) or e.global_position.z < -2.5:
 					_pass("parry shoved the enemy away")
 				else:
 					_fail("parry did not shove (vz %.1f)" % e.velocity.z)
@@ -108,7 +112,7 @@ func _physics_process(_delta: float) -> bool:
 				_player.do_throw()  # hurl it forward (-Z)
 			if _frames >= 3:
 				var gone := not is_instance_valid(e)
-				if gone or (_player.held_object() == null and e.velocity.z < -8.0):
+				if gone or (_player.held_object() == null and _launched(e, -8.0)):
 					_pass("throw hurled the enemy forward (%s)"
 							% ("gone" if gone else "vz %.0f" % e.velocity.z))
 				else:
@@ -122,7 +126,7 @@ func _physics_process(_delta: float) -> bool:
 				e.velocity = Vector3.ZERO
 				_player.do_pull()
 			if _frames >= 3:
-				if not is_instance_valid(e) or e.velocity.z > 5.0:
+				if _launched(e, 5.0):
 					_pass("pull yanked the enemy toward you")
 				else:
 					_fail("pull did not yank (vz %.1f)" % e.velocity.z)
@@ -171,3 +175,29 @@ func _pass(msg: String) -> void:
 func _fail(msg: String) -> void:
 	_failures += 1
 	print("FAIL: %s" % msg)
+
+
+## Did an ability actually launch this enemy in direction `want_vz`?
+##
+## Enemies ragdoll on strong hits now (STO-ENEMIES-006), and a
+## ragdolling enemy's own `velocity` is always zero — the momentum is
+## carried by its physics parts. So accept EITHER a body-velocity
+## change or a ragdoll whose pelvis is genuinely moving that way.
+## Being ragdolled alone is NOT enough: it must be in motion, so an
+## ability that does nothing still fails.
+func _launched(e, want_vz: float) -> bool:
+	if not is_instance_valid(e):
+		return true          # defeated outright
+	if (want_vz < 0.0 and e.velocity.z < want_vz) \
+			or (want_vz > 0.0 and e.velocity.z > want_vz):
+		return true
+	if e.has_method("ragdoll"):
+		var rag = e.call("ragdoll")
+		if rag != null:
+			var pelvis: RigidBody3D = rag.call("part", "Pelvis")
+			if pelvis != null:
+				var vz := pelvis.linear_velocity.z
+				# launch() gives parts ~0.8x the hit, so allow for that.
+				return (want_vz < 0.0 and vz < want_vz * 0.6) \
+						or (want_vz > 0.0 and vz > want_vz * 0.6)
+	return false
