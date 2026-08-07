@@ -436,6 +436,10 @@ func _physics_process(delta: float) -> void:
 				DebugOverlay.log("player/abilities", self,
 						"%s: pounce HIT %s — cooldown refunded",
 						[name, target.name])
+		# Charging is only possible when the pounce is off cooldown. If
+		# it isn't, we fall through to the ordinary jump below, which
+		# fires instantly on press (STO-CHARACTER-036) — the Runner must
+		# never be unable to jump.
 		if Input.is_action_pressed("jump") and is_on_floor() \
 				and not _pouncing and _pounce_cd <= 0.0:
 			_pounce_charge += delta
@@ -477,7 +481,10 @@ func _physics_process(delta: float) -> void:
 	# GROUND case above (hold to charge); their air jumps still land here.
 	if Input.is_action_just_pressed("jump"):
 		if is_on_floor():
-			if not _can_pounce:
+			# Pounce characters normally charge instead of hopping — but
+			# while the pounce is recharging there is nothing to charge,
+			# so Space is an ordinary jump, instantly (STO-CHARACTER-036).
+			if not _can_pounce or _pounce_cd > 0.0:
 				velocity.y = _jump
 				_jumps_used = 1
 		elif _wall_jump and is_on_wall():
