@@ -123,6 +123,25 @@ func _physics_process(_d: float) -> bool:
 					% [near_front, far_front])
 			# Fronts actually advance over time.
 			_fronts_seen = _echo.call("wave_fronts")
+
+			# --- A WALK must ring the room clearly (STO-CHARACTER-043).
+			# Walking pace, not a sprint:
+			var before_marks := int(_echo.call("mark_count"))
+			_echo.call("emit_pulse", Vector3(0, 1, 3), 2.0, null)
+			_check(int(_echo.call("mark_count")) > before_marks,
+					"a walking pace still emits a wave")
+			_check(float(_echo.call("last_pulse_strength")) >= 0.7,
+					"a walk's wave is bright, not a faint flicker (%.2f)"
+					% float(_echo.call("last_pulse_strength")))
+			_check(float(_echo.call("last_pulse_radius")) >= 6.0,
+					"a walk's wave reaches across a room (%.1f m)"
+					% float(_echo.call("last_pulse_radius")))
+			# Speed should still matter, just not decide visibility.
+			var walk_r: float = _echo.call("last_pulse_radius")
+			_echo.call("emit_pulse", Vector3(0, 1, 3), 9.0, null)
+			_check(float(_echo.call("last_pulse_radius")) > walk_r,
+					"a sprint still reaches further than a walk (%.1f m vs %.1f m)"
+					% [float(_echo.call("last_pulse_radius")), walk_r])
 			if is_instance_valid(_mover):
 				_mover.queue_free()
 			_ticks = 0

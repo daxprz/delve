@@ -22,11 +22,17 @@ const ECHO_LAYER := 2
 const WORLD_MASK := 1
 
 const PULSE_INTERVAL := 0.12    # min seconds between pulses per mover
-const MIN_MOVE_SPEED := 0.8     # slower than this makes no sound
+## Even a gentle walk must ring the room clearly (STO-CHARACTER-043):
+## the threshold is low, the base reach is generous, and the strength
+## floor is high, so walking gives a proper ripple rather than a faint
+## flicker. Speed still matters — a sprint reaches much further and
+## burns brighter — but a walk is never nearly-invisible.
+const MIN_MOVE_SPEED := 0.35    # slower than this makes no sound
 const RAYS_PER_PULSE := 26
-const PULSE_RADIUS_BASE := 3.0  # metres, at MIN_MOVE_SPEED
+const PULSE_RADIUS_BASE := 6.5  # metres, at MIN_MOVE_SPEED
 const PULSE_RADIUS_PER_SPEED := 0.9
-const PULSE_RADIUS_MAX := 14.0
+const PULSE_RADIUS_MAX := 16.0
+const STRENGTH_FLOOR := 0.72    # brightness of the quietest audible move
 ## The echo travels as an expanding WAVE (STO-CHARACTER-041): a
 ## surface lights up as the wavefront sweeps over it, then dims behind
 ## it, and the whole wave weakens as it spreads outward.
@@ -115,7 +121,7 @@ func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
 			PULSE_RADIUS_BASE, PULSE_RADIUS_MAX)
 	var space := get_world_3d().direct_space_state
 	var exclude := _creature_rids(source)
-	var strength := clampf(speed / 6.0, 0.35, 1.0)
+	var strength := clampf(speed / 6.0, STRENGTH_FLOOR, 1.0)
 	_pulses += 1
 
 	var marks: Array = []
@@ -195,7 +201,8 @@ func _wave_brightness(dist: float, front: float, radius: float) -> float:
 		return 0.0
 	var band := 1.0 - tail
 	# Spreading loss: the further the front has travelled, the weaker.
-	var spread := 1.0 - clampf(front / maxf(radius, 0.01), 0.0, 1.0) * 0.75
+	# Gentle enough that the outer edge of a walk's ripple still reads.
+	var spread := 1.0 - clampf(front / maxf(radius, 0.01), 0.0, 1.0) * 0.55
 	return band * spread
 
 
@@ -257,6 +264,20 @@ func pulse_count() -> int:
 
 func live_wave_count() -> int:
 	return _pulses_live.size()
+
+## Brightness of the most recent pulse (for tests).
+func last_pulse_strength() -> float:
+	if _pulses_live.is_empty():
+		return 0.0
+	return float(_pulses_live[_pulses_live.size() - 1]["strength"])
+
+
+## Reach of the most recent pulse, in metres (for tests).
+func last_pulse_radius() -> float:
+	if _pulses_live.is_empty():
+		return 0.0
+	return float(_pulses_live[_pulses_live.size() - 1]["radius"])
+
 
 ## Every live mark, flattened (for tests).
 func all_marks() -> Array:
