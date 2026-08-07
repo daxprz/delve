@@ -68,13 +68,28 @@ no geometry. It has three ways of seeing, each a different trade:
 
 | | Shows you | Costs you |
 |---|---|---|
-| **Hearing** (passive) | Anything that *moves* sends out a wave that lights the walls around it — never the creature itself | Nothing, but you can't choose when |
-| **Lidar** (`RMB`) | A cone ahead of you that *holds* for a few seconds. Creatures come back **red** | 2.2 s cooldown |
-| **Rifle** (`LMB`) | The bang floods the whole area with light — this is how you look around | It tells *everything* exactly where you are |
+| **Hearing** (passive) | Anything that moves, or any action — footsteps, gunshots, punches, bodies hitting the floor | Nothing, but you can't choose when |
+| **Lidar** (`RMB`) | A cone ahead of you, in detail, **remembered for 5 minutes** | 2.2 s cooldown |
+| **Rifle** (`LMB`) | The bang floods the whole area at once | It tells *everything* exactly where you are |
+
+Everything it learns is drawn as coloured dots on the surfaces it
+found. **Colour says what a thing is; shade says how long ago you
+learned it**, darkening to black and vanishing:
+
+| | |
+|---|---|
+| ground and walls | shades of **blue** |
+| enemies | shades of **red** |
+| other players | shades of **green** |
+
+The lidar clusters its rays where you are actually aiming, so the
+middle of your view is drawn far more finely than the edges, and
+re-scanning a place refreshes it rather than piling dots on dots.
 
 Heavier creatures are louder, so a big enemy announces itself from
 much further away than a small one — and since mass comes from each
-enemy's generated body, no two sound alike.
+enemy's generated body, no two sound alike. Other players' actions
+carry across the network, so you hear what your friends are doing.
 
 ---
 
@@ -124,7 +139,7 @@ be toggled independently for on-screen gizmos and text logging, per
 observer. Gizmos include tail hit points and enemy hit-reaction
 arrows.
 
-**Smoke tests** — 49 headless tests:
+**Smoke tests** — 55 headless tests:
 
 ```bash
 godot --headless --path . -s res://tests/smoke_player.gd
@@ -137,6 +152,81 @@ built world and fails if a visible mesh has drifted off its collision
 box — it has caught that exact regression twice.
 
 ---
+
+## Deployment bundle
+
+Every tagged build publishes a **bundle**: the platform archives plus a
+`manifest.json` describing them. The manifest is the contract an
+installer works against — it should never need to scrape a web page or
+guess a filename.
+
+**Finding the latest build** — the GitHub releases API returns the
+newest release and its assets:
+
+```
+https://api.github.com/repos/daxprz/delve/releases/latest
+```
+
+**`manifest.json`**
+
+```json
+{
+  "schema": 1,
+  "game": "delve",
+  "version": "0.1.7",
+  "released": "2026-08-07T23:00:00Z",
+  "default_port": 7777,
+  "platforms": {
+    "linux":   { "file": "delve-linux.zip",   "sha256": "…", "size": 27340184, "entry": "delve.x86_64" },
+    "windows": { "file": "delve-windows.zip", "sha256": "…", "size": 36175872, "entry": "delve.exe" },
+    "macos":   { "file": "delve-macos.zip",   "sha256": "…", "size": 61728737, "entry": "Delve.app" }
+  }
+}
+```
+
+| field | meaning |
+|---|---|
+| `schema` | manifest format version. Bump = breaking change; refuse a schema you do not know |
+| `version` | the release, without the `v` |
+| `platforms.<os>.file` | asset name to download from the same release |
+| `platforms.<os>.sha256` | verify after download, before installing |
+| `platforms.<os>.entry` | what to launch inside the unpacked archive |
+| `default_port` | UDP port the game hosts on |
+
+A platform key is **absent** if that export failed, so check for the
+key rather than assuming all three exist.
+
+**An installer's job**, in order:
+
+1. Fetch the latest release and its `manifest.json`.
+2. Compare `version` against what is installed; stop if equal.
+3. Download the archive for this machine's platform.
+4. Verify `sha256` — do not install a file that does not match.
+5. Unpack into a versioned directory, then switch a `current` symlink
+   (or equivalent) so a half-finished download never replaces a
+   working install.
+6. Launch `entry` from that directory.
+
+**Launch arguments** (useful for kiosk-style auto-start on a LAN):
+
+```
+delve                      # normal: menu, then lobby
+delve -- --server          # host immediately, skipping the lobby
+delve -- --client 10.0.0.5 # join that address immediately
+```
+
+**Per-platform notes**
+
+- **Linux** — `delve.x86_64` needs the executable bit; zip does not
+  always preserve it, so `chmod +x` after unpacking.
+- **macOS** — the app is **unsigned**. Gatekeeper blocks the first
+  launch unless the quarantine flag is cleared:
+  `xattr -cr /path/to/Delve.app`. An installer should do this itself.
+- **Windows** — SmartScreen may warn on first run for the same reason.
+
+Settings and saved servers live in the user data directory
+(`~/.local/share/godot/app_userdata/Delve` on Linux), **not** in the
+install directory, so replacing a version does not lose them.
 
 ## Layout
 

@@ -103,13 +103,30 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Needed for scripts/make_manifest.py — the release job does not
+      # otherwise have the repo.
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
+
+      # A machine-readable description of this build, so an installer
+      # can decide whether it already has this version, fetch the right
+      # file for its platform, verify it, and know what to run.
+      # Contract: README.md -> "Deployment bundle".
+      - name: Write manifest
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          find dist -name '*.zip' -exec cp {} out/ ';'
+          python3 scripts/make_manifest.py "${GITHUB_REF_NAME#v}" out
+
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*.zip
+          files: |
+            out/*.zip
+            out/manifest.json
           generate_release_notes: true
           body: |
             Download the zip for your machine, unzip it, and run **delve**.
