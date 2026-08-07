@@ -1,8 +1,9 @@
 # Godot
 .godot/
 *.translation
-export_presets.cfg
 export/
+# NOTE: export_presets.cfg IS committed — CI needs it to build
+# releases (see .github/workflows/release.yml).
 
 # Beads work-graph DB (per-machine, lives at /var/<project>/beads/)
 .beads/

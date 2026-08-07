@@ -25,6 +25,8 @@ const ENEMY_SPAWNS: Array = [
 var _char_buttons: Array = []
 var _in_game := false
 var _pause_menu: CanvasLayer
+var _address_edit: LineEdit
+var _server_list: VBoxContainer
 
 
 func _ready() -> void:
@@ -37,6 +39,7 @@ func _ready() -> void:
 	# window, so capturing immediately is Wayland-safe (STO-UI-002).
 	$Menu/UI/VBox/HostButton.pressed.connect(host_game.bind(true))
 	$Menu/UI/VBox/JoinButton.pressed.connect(join_game.bind(true))
+	_build_address_field()
 
 	# Build the obstacle playground (EPI-WORLD-PLAYGROUND).
 	var playground: Node3D = PlaygroundScript.new()
@@ -60,11 +63,15 @@ func _ready() -> void:
 	mirror.position = Vector3(0.0, 0.0, -7.0)  # in front of the spawn (player faces -Z)
 	add_child(mirror)
 
-	# Launch-arg affordance for automation: godot -- --server | --client
+	# Launch-arg affordance for automation and for shortcuts against a
+	# downloaded build:  --server  |  --client [address]
 	var user_args := OS.get_cmdline_user_args()
 	if user_args.has("--server"):
 		host_game()
 	elif user_args.has("--client"):
+		var idx := user_args.find("--client")
+		if idx + 1 < user_args.size() and not user_args[idx + 1].begins_with("--"):
+			_address_edit.text = user_args[idx + 1]
 		join_game()
 
 
@@ -210,9 +217,82 @@ func host_game(capture_mouse := false) -> void:
 	_spawn_player(1)
 
 
-func join_game(capture_mouse := false) -> void:
-	if Network.join() != OK:
+## Address box under the Join button (STO-TOOLS-004). Without this a
+## downloaded build could only ever connect to itself — the join was
+## hardwired to 127.0.0.1.
+func _build_address_field() -> void:
+	var vbox := $Menu/UI/VBox as VBoxContainer
+	_address_edit = LineEdit.new()
+	_address_edit.name = "AddressEdit"
+	_address_edit.text = Network.DEFAULT_ADDRESS
+	_address_edit.placeholder_text = "address to join (e.g. 192.168.1.20)"
+	_address_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_address_edit.custom_minimum_size = Vector2(0, 36)
+	# Enter in the box joins, so you can type an address and go.
+	_address_edit.text_submitted.connect(func(_t: String) -> void:
+		join_game(true))
+	vbox.add_child(_address_edit)
+	vbox.move_child(_address_edit, vbox.get_child_count() - 1)
+
+	_server_list = VBoxContainer.new()
+	_server_list.name = "SavedServers"
+	_server_list.add_theme_constant_override("separation", 4)
+	vbox.add_child(_server_list)
+	refresh_server_list()
+
+
+## Rebuild the saved-server buttons (STO-TOOLS-006). Clicking one fills
+## the address box and joins straight away; the small x forgets it.
+func refresh_server_list() -> void:
+	if _server_list == null:
 		return
+	for c in _server_list.get_children():
+		c.queue_free()
+	var saved: Array = Network.servers()
+	if saved.is_empty():
+		return
+	var label := Label.new()
+	label.text = "Places you've played:"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_server_list.add_child(label)
+	for entry in saved:
+		var addr := String(entry["address"])
+		var row := HBoxContainer.new()
+		var go := Button.new()
+		go.text = addr if String(entry.get("name", "")) == "" \
+				else "%s  (%s)" % [String(entry["name"]), addr]
+		go.custom_minimum_size = Vector2(170, 30)
+		go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		go.pressed.connect(func() -> void:
+			_address_edit.text = addr
+			join_game(true))
+		row.add_child(go)
+		var forget := Button.new()
+		forget.text = "x"
+		forget.tooltip_text = "Forget %s" % addr
+		forget.custom_minimum_size = Vector2(30, 30)
+		forget.pressed.connect(func() -> void:
+			Network.forget_server(addr)
+			refresh_server_list())
+		row.add_child(forget)
+		_server_list.add_child(row)
+
+
+## Whatever address is typed in the box (falls back to the default).
+func join_address() -> String:
+	if _address_edit == null:
+		return Network.DEFAULT_ADDRESS
+	var t := _address_edit.text.strip_edges()
+	return t if t != "" else Network.DEFAULT_ADDRESS
+
+
+func join_game(capture_mouse := false) -> void:
+	var addr := join_address()
+	if Network.join(addr) != OK:
+		return
+	# Remember where we played so it's one click next time.
+	Network.remember_server(addr)
+	refresh_server_list()
 	menu.hide()
 	_in_game = true
 	if capture_mouse:

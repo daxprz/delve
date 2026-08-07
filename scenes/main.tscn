@@ -85,4 +85,4 @@ text = "Host"
 
 [node name="JoinButton" type="Button" parent="Menu/UI/VBox" unique_id=1725351044]
 layout_mode = 2
-text = "Join 127.0.0.1"
+text = "Join"

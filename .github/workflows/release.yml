@@ -1,0 +1,108 @@
+name: Release
+
+# Builds downloadable Linux + Windows versions of delve.
+#
+#   - push a tag like v0.1.0  -> builds and publishes a GitHub Release
+#   - run manually (Actions tab -> Release -> Run workflow) -> builds
+#     and attaches the files to that run, without publishing a release
+#
+# Requires export_presets.cfg to be committed (it is).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.6.3
+
+jobs:
+  build:
+    name: Export ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            preset: Linux
+            out: delve.x86_64
+            dir: linux
+          - name: Windows
+            preset: Windows
+            out: delve.exe
+            dir: windows
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} + export templates
+        run: |
+          set -euo pipefail
+          BASE="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
+
+          curl -fL -o godot.zip "$BASE/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+
+          curl -fL -o templates.tpz "$BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q templates.tpz
+          # Templates must sit in a version-named folder Godot looks in.
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mv templates/* "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+          godot --version
+
+      - name: Import assets
+        # First run builds the .godot import cache. Godot exits non-zero
+        # on some import warnings, which are not failures for us.
+        run: godot --headless --import || true
+
+      - name: Export ${{ matrix.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p "build/${{ matrix.dir }}"
+          godot --headless --export-release "${{ matrix.preset }}" \
+            "build/${{ matrix.dir }}/${{ matrix.out }}"
+          ls -la "build/${{ matrix.dir }}"
+          # An export can "succeed" while producing nothing useful.
+          test -s "build/${{ matrix.dir }}/${{ matrix.out }}"
+
+      - name: Package
+        run: |
+          cd "build/${{ matrix.dir }}"
+          chmod +x delve.x86_64 2>/dev/null || true
+          zip -r "../../delve-${{ matrix.dir }}.zip" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: delve-${{ matrix.dir }}
+          path: delve-${{ matrix.dir }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*.zip
+          generate_release_notes: true
+          body: |
+            Download the zip for your machine, unzip it, and run **delve**.
+
+            **To play together:** one person presses **Host**, everyone
+            else types that person's IP address into the box and presses
+            **Join**. Servers you join are remembered for next time.
+
+            Both players must be on the same network, or the host must
+            forward UDP port **7777**.
