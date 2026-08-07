@@ -66,8 +66,12 @@ const RAM_HIT_RADIUS := 0.9         # how close the fist must get
 ## a run, so punches could never do more than nudge. Now there is a
 ## solid base hit plus a momentum bonus, so a slow ram staggers and a
 ## fast one flattens them.
-const RAM_KNOCKBACK_BASE := 4.2     # landed-punch impulse regardless of speed
-const RAM_KNOCKBACK := 1.15         # extra knockback per m/s of momentum
+## Sized so a punch floors even the sturdiest procedural build: the
+## worst case needs impulse >= KNOCKDOWN_DV(7.5) * stability(1.25) *
+## mass(1.5) ~= 14. At a 5 m/s ram that is 6.0 + 8.0 = 14, and a
+## sprint puts it well clear; a minimum-speed ram still staggers.
+const RAM_KNOCKBACK_BASE := 6.0     # landed-punch impulse regardless of speed
+const RAM_KNOCKBACK := 1.6          # extra knockback per m/s of momentum
 const RAM_KNOCKBACK_LIFT := 0.35    # how much of the hit goes upward
 ## Hauling a grabbed enemy along (STO-CHARACTER-045): a limp body is
 ## ~60 kg of jointed parts, so the box's gentle reel impulse could not
@@ -569,12 +573,20 @@ func is_extended(i: int) -> bool:
 ## from the shoulder, out to (roughly) the arm's length.
 func _reach_point(side: int) -> Vector3:
 	var shoulder := _shoulder_world(side)
-	var fwd := Vector3.FORWARD
+	# Punch where you LOOK, including up and down (STO-CHARACTER-046).
+	# This used to take the player body's facing and flatten it
+	# (fwd.y = 0), but pitch lives on the camera, not the body — so
+	# every punch came out dead horizontal no matter where you aimed.
+	return shoulder + aim_dir() * (UPPER_LEN + FORE_LEN + HAND_LEN) * arm_scale
+
+
+## The direction the player is aiming, pitch included.
+func aim_dir() -> Vector3:
+	if _camera != null:
+		return -_camera.global_transform.basis.z
 	if _player != null:
-		fwd = -_player.global_transform.basis.z
-		fwd.y = 0.0
-		fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
-	return shoulder + fwd * (UPPER_LEN + FORE_LEN + HAND_LEN) * arm_scale
+		return -_player.global_transform.basis.z
+	return Vector3.FORWARD
 
 
 ## An extended fist that touches an enemy while the player has momentum
@@ -611,9 +623,13 @@ func _ram_damage(delta: float) -> void:
 				elif node.has_method("take_damage"):
 					node.call("take_damage", speed * RAM_DAMAGE_SCALE)
 				if node.has_method("apply_knockback"):
-					var hit := (dir + Vector3.UP * RAM_KNOCKBACK_LIFT).normalized() \
-							* (RAM_KNOCKBACK_BASE + speed * RAM_KNOCKBACK)
-					node.call("apply_knockback", hit)
+					# Knock them where the punch is AIMED (so an upward
+					# punch launches them), with the lift folded in;
+					# momentum still sets how hard.
+					var punch_dir := (aim_dir() + Vector3.UP * RAM_KNOCKBACK_LIFT) \
+							.normalized()
+					node.call("apply_knockback", punch_dir
+							* (RAM_KNOCKBACK_BASE + speed * RAM_KNOCKBACK))
 				if speed >= RAM_SHOCKWAVE_SPEED:
 					_spawn_shockwave(center, speed)
 				_ram_cd[eid] = RAM_COOLDOWN
