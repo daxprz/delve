@@ -50,6 +50,7 @@ const WAVE_SPEED := 11.0        # m/s the wavefront expands
 const WAVE_THICKNESS := 1.9     # m — how wide the lit band is
 const WAVE_TAIL := 0.55         # how much glow lingers behind the front
 const MARK_SIZE := 0.16
+const ENEMY_MARK_SCALE := 4.0   # red contacts are drawn much larger
 const FADE_FULL := 8.0          # metres: closer than this = full strength
 const FADE_NONE := 34.0         # metres: beyond this = invisible
 const MAX_MARKS := 900
@@ -153,30 +154,39 @@ func emit_blast(origin: Vector3, radius := 45.0) -> void:
 func emit_scan(origin: Vector3, dir: Vector3, radius := 40.0,
 		half_angle_deg := 32.0, rays := 150, linger := 3.2) -> void:
 	_pulses += 1
+	# The lidar is an AIMED tool, so unlike passive hearing it also
+	# picks out creatures — they come back RED (STO-CHARACTER-049).
+	# Passive footstep echoes still only ever outline the room.
 	_cast_pulse(origin, radius, 1.0, null, rays, linger,
-			dir.normalized(), deg_to_rad(half_angle_deg))
+			dir.normalized(), deg_to_rad(half_angle_deg), true)
 
 
 func _cast_pulse(origin: Vector3, radius: float, strength: float,
 		source: Node3D, rays: int, linger := 0.0,
-		cone_axis := Vector3.ZERO, cone_angle := 0.0) -> void:
+		cone_axis := Vector3.ZERO, cone_angle := 0.0,
+		include_creatures := false) -> void:
 	var space := get_world_3d().direct_space_state
-	var exclude := _creature_rids(source)
+	var exclude: Array = [] if include_creatures else _creature_rids(source)
+	var mask := WORLD_MASK
 	var marks: Array = []
 	for i in rays:
 		var dir := _cone_dir(i, rays, cone_axis, cone_angle) \
 				if cone_angle > 0.0 else _sphere_dir_of(i, rays)
 		var q := PhysicsRayQueryParameters3D.create(
-				origin, origin + dir * radius, WORLD_MASK)
+				origin, origin + dir * radius, mask)
 		q.exclude = exclude
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
 			continue
 		var pos: Vector3 = hit["position"]
+		var col = hit.get("collider")
+		var is_enemy := include_creatures and col != null \
+				and col is Node and (col as Node).is_in_group("enemies")
 		marks.append({
 			"pos": pos,
 			"normal": hit["normal"],
 			"dist": origin.distance_to(pos),
+			"enemy": is_enemy,
 		})
 	if marks.is_empty():
 		return
@@ -321,14 +331,23 @@ func _rebuild_mesh() -> void:
 			if not began:
 				_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
 				began = true
-			var col := Color(0.55, 0.85, 1.0, alpha)
+			# Walls come back cold blue; a creature comes back RED, and
+			# a bit brighter so it stands out at a glance.
+			var col := Color(1.0, 0.22, 0.22, minf(alpha * 1.25, 1.0)) \
+					if bool(m.get("enemy", false)) \
+					else Color(0.55, 0.85, 1.0, alpha)
 			# A small cross lying ON the surface, so walls read as walls.
 			var n: Vector3 = m["normal"]
 			var t1 := n.cross(Vector3.UP)
 			if t1.length() < 0.01:
 				t1 = n.cross(Vector3.RIGHT)
-			t1 = t1.normalized() * MARK_SIZE
-			var t2 := n.cross(t1).normalized() * MARK_SIZE
+			# Creature hits are drawn much bigger: only a couple of rays
+			# land on a distant body, so a normal-sized mark would be an
+			# almost invisible speck (STO-CHARACTER-049).
+			var mark_size := MARK_SIZE * (ENEMY_MARK_SCALE
+					if bool(m.get("enemy", false)) else 1.0)
+			t1 = t1.normalized() * mark_size
+			var t2 := n.cross(t1).normalized() * mark_size
 			var pos: Vector3 = m["pos"] + n * 0.01
 			_mesh.surface_set_color(col)
 			_mesh.surface_add_vertex(pos - t1)
@@ -366,6 +385,16 @@ func last_pulse_radius() -> float:
 	if _pulses_live.is_empty():
 		return 0.0
 	return float(_pulses_live[_pulses_live.size() - 1]["radius"])
+
+
+## How many live marks are creature hits (red) vs room (blue).
+func enemy_mark_count() -> int:
+	var n := 0
+	for p in _pulses_live:
+		for m in p["marks"]:
+			if bool(m.get("enemy", false)):
+				n += 1
+	return n
 
 
 ## Every live mark, flattened (for tests).

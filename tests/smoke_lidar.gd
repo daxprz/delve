@@ -14,6 +14,7 @@ var _cam: Camera3D
 var _lit_early := 0
 var _behind_marks := 0
 var _ahead_marks := 0
+var _enemy: CharacterBody3D
 
 
 func _physics_process(_d: float) -> bool:
@@ -74,8 +75,52 @@ func _physics_process(_d: float) -> bool:
 					"the scan hits the wall we're facing (%d)" % _ahead_marks)
 			_check(_behind_marks == 0,
 					"the scan sees nothing behind us (%d)" % _behind_marks)
+			_next("enemies_red")
+		"enemies_red":
+			if _ticks == 1:
+				# Put an enemy in the scan cone.
+				var es: GDScript = load("res://scripts/enemy.gd")
+				_enemy = es.new()
+				_enemy.name = "Contact"
+				_enemy.position = Vector3(0, 1, -12.0)
+				root.add_child(_enemy)
+				return false
+			if _ticks == 10:
+				# Only NOW sweep: a body added this tick is not in the
+				# physics space yet, so a same-tick ray sails through it.
+				_enemy.set_physics_process(false)   # keep it put
+				_echo.set("_pulses_live", [])
+				_player.set("_scan_cd", 0.0)
+				_player.lidar_scan()
+			if _ticks < 80:
+				return false
+			var reds := int(_echo.call("enemy_mark_count"))
+			_check(reds > 0, "the lidar paints the enemy RED (%d marks)" % reds)
+			# Those red marks must actually be ON the enemy.
+			var on_target := 0
+			for m in _echo.call("all_marks"):
+				if not bool(m.get("enemy", false)):
+					continue
+				if (m["pos"] as Vector3).distance_to(
+						_enemy.global_position + Vector3(0, 0.9, 0)) < 1.6:
+					on_target += 1
+			_check(on_target == reds,
+					"every red mark is on the enemy (%d of %d)" % [on_target, reds])
+			# Walls in the same scan stay blue.
+			var blues := int(_echo.call("mark_count")) - reds
+			_check(blues > 20, "the room is still painted blue (%d)" % blues)
+			# And passive hearing must STILL never reveal a creature.
+			_echo.set("_pulses_live", [])
+			_echo.call("emit_pulse", Vector3(0, 1, -12.0), 5.0, _enemy)
+			_check(int(_echo.call("enemy_mark_count")) == 0,
+					"footstep echoes still never show a creature")
 			_next("holding")
 		"holding":
+			if _ticks == 1:
+				_echo.set("_pulses_live", [])
+				_player.set("_scan_cd", 0.0)
+				_player.lidar_scan()
+				return false
 			# Still lit ~2 s after the sweep passed: it HOLDS.
 			if _ticks < 120:
 				return false
@@ -87,17 +132,14 @@ func _physics_process(_d: float) -> bool:
 			# ...and then it goes away. The farthest points are painted
 			# last and hold longest, so wait for the whole scan rather
 			# than guessing a tick count.
-			if _ticks == 260:
-				_check(_lit(0.05) == 0,
-						"the scan fades away afterwards (%d still lit)" % _lit(0.05))
-			if _ticks < 260:
-				return false
-			if int(_echo.call("live_wave_count")) > 0:
-				if _ticks > 700:
-					_check(false, "the spent scan was never discarded")
+			# Wait for the whole scan to die rather than guessing ticks:
+			# the farthest points are painted last and hold longest.
+			if int(_echo.call("live_wave_count")) > 0 or _lit(0.05) > 0:
+				if _ticks > 800:
+					_check(false, "the scan never faded (%d lit)" % _lit(0.05))
 					return _finish()
 				return false
-			_check(true, "the spent scan is discarded")
+			_check(true, "the scan fades away and is discarded")
 			return _finish()
 	return false
 
