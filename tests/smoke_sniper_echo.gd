@@ -142,6 +142,39 @@ func _physics_process(_d: float) -> bool:
 			_check(float(_echo.call("last_pulse_radius")) > walk_r,
 					"a sprint still reaches further than a walk (%.1f m vs %.1f m)"
 					% [float(_echo.call("last_pulse_radius")), walk_r])
+
+			# --- Heavier creatures are LOUDER (STO-CHARACTER-043) ---
+			# Same speed, different builds: the heavy one must carry
+			# further and burn brighter.
+			var es2: GDScript = load("res://scripts/enemy.gd")
+			var light: CharacterBody3D = es2.new()
+			light.name = "Lightweight"
+			light.position = Vector3(0, 1, 12)
+			root.add_child(light)
+			var heavy: CharacterBody3D = es2.new()
+			heavy.name = "Heavyweight"
+			heavy.position = Vector3(0, 1, 14)
+			root.add_child(heavy)
+			# Force known masses so the check doesn't ride on which
+			# random build each name happened to generate.
+			light.set("_mass", 0.8)
+			heavy.set("_mass", 1.5)
+			_echo.call("emit_pulse", Vector3(0, 1, 3), 4.0, light)
+			var light_r: float = _echo.call("last_pulse_radius")
+			var light_s: float = _echo.call("last_pulse_strength")
+			_echo.call("emit_pulse", Vector3(0, 1, 3), 4.0, heavy)
+			var heavy_r: float = _echo.call("last_pulse_radius")
+			var heavy_s: float = _echo.call("last_pulse_strength")
+			_check(heavy_r > light_r,
+					"a heavy creature's echo carries further (%.1f m vs %.1f m)"
+					% [heavy_r, light_r])
+			_check(heavy_s > light_s,
+					"a heavy creature's echo is brighter (%.2f vs %.2f)"
+					% [heavy_s, light_s])
+			_check(light_s >= 0.3,
+					"a light creature is still visible (%.2f)" % light_s)
+			light.queue_free()
+			heavy.queue_free()
 			if is_instance_valid(_mover):
 				_mover.queue_free()
 			_ticks = 0

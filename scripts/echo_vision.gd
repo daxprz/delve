@@ -33,6 +33,14 @@ const PULSE_RADIUS_BASE := 6.5  # metres, at MIN_MOVE_SPEED
 const PULSE_RADIUS_PER_SPEED := 0.9
 const PULSE_RADIUS_MAX := 16.0
 const STRENGTH_FLOOR := 0.72    # brightness of the quietest audible move
+## Heavier creatures are LOUDER (STO-CHARACTER-043): a big enemy's
+## footfall carries further and burns brighter than a small one's, so
+## the Sniper can tell something heavy is coming before it arrives.
+## Reads the procedural build's relative mass (Enemy.mass(), ~0.75-1.5
+## where 1.0 is average); anything without one counts as average.
+const LOUDNESS_MIN := 0.7
+const LOUDNESS_MAX := 1.55
+const QUIET_FLOOR := 0.3        # even the lightest mover stays visible
 ## The echo travels as an expanding WAVE (STO-CHARACTER-041): a
 ## surface lights up as the wavefront sweeps over it, then dims behind
 ## it, and the whole wave weakens as it spreads outward.
@@ -116,12 +124,15 @@ func _scan_movers(delta: float) -> void:
 ## mark. The mover itself, and all other creatures, are excluded — we
 ## only ever outline the room, never what is in it.
 func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
+	# How heavy is whatever made this sound?
+	var loud := _loudness_of(source)
 	var radius := clampf(
-			PULSE_RADIUS_BASE + speed * PULSE_RADIUS_PER_SPEED,
-			PULSE_RADIUS_BASE, PULSE_RADIUS_MAX)
+			(PULSE_RADIUS_BASE + speed * PULSE_RADIUS_PER_SPEED) * loud,
+			PULSE_RADIUS_BASE * LOUDNESS_MIN, PULSE_RADIUS_MAX)
 	var space := get_world_3d().direct_space_state
 	var exclude := _creature_rids(source)
-	var strength := clampf(speed / 6.0, STRENGTH_FLOOR, 1.0)
+	var strength := clampf(clampf(speed / 6.0, STRENGTH_FLOOR, 1.0) * loud,
+			QUIET_FLOOR, 1.0)
 	_pulses += 1
 
 	var marks: Array = []
@@ -148,6 +159,17 @@ func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
 		"radius": radius,
 		"marks": marks,
 	})
+
+
+## How loud this mover is, from its build. Enemies expose a relative
+## mass from their procedural generation; players and everything else
+## count as average. NOTE: deliberately does NOT read RigidBody3D.mass
+## — that is in kilograms, a different scale entirely, and a 2 kg
+## crate would otherwise out-shout every enemy in the game.
+func _loudness_of(source: Node3D) -> float:
+	if source == null or not source.has_method("mass"):
+		return 1.0
+	return clampf(float(source.call("mass")), LOUDNESS_MIN, LOUDNESS_MAX)
 
 
 ## Every creature's RID — echoes bounce off the room, not off people.
