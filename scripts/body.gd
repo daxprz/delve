@@ -50,6 +50,30 @@ void fragment() {
 ## mechanical arms attach at the shoulders instead. Set before _ready.
 var build_human_arms := true
 
+## Base body color. Set before _ready (players: GRAY; enemies: red).
+var base_color := GRAY
+
+## Distance-fade near the camera (first-person owners). Enemies set
+## this false — their bodies must stay solid up close. Set before _ready.
+var use_fade := true
+
+## Procedural variation (STO-ENEMIES-003): 0 = exact canonical
+## proportions (players). Any other value seeds an RNG that varies
+## limb lengths, torso, head and bulk, so no two bodies look alike.
+## Use a deterministic seed (e.g. name hash) so every peer renders the
+## same individual. Set before _ready.
+var variation_seed := 0
+
+# Proportion multipliers (filled from variation_seed in _ready).
+var _leg_scale := 1.0
+var _arm_scale := 1.0
+var _torso_scale := 1.0
+var _head_scale := 1.0
+var _bulk := 1.0
+# Effective bone lengths (canonical consts x _leg_scale).
+var _thigh_len := THIGH_LEN
+var _shin_len := SHIN_LEN
+
 var _is_local := false
 var _body_mat: Material
 var _player
@@ -64,6 +88,11 @@ var _thighs: Array = []
 var _shins: Array = []
 var _feet: Array = []
 var _uppers: Array = []   # empty for the Grabber
+var _forearms: Array = []
+var _hands: Array = []
+var _torso: Node3D
+var _neck: Node3D
+var _head: Node3D
 # Procedural foot placement (world-space plant positions).
 var _feet_init := false
 var _foot_pos: Array = [Vector3.ZERO, Vector3.ZERO]
@@ -71,20 +100,37 @@ var _foot_from: Array = [Vector3.ZERO, Vector3.ZERO]
 var _foot_to: Array = [Vector3.ZERO, Vector3.ZERO]
 var _stepping: Array = [false, false]
 var _step_t: Array = [0.0, 0.0]
+# One-leg buckle (STO-ENEMIES-008).
+var _buckle_leg := -1
+var _buckle_time := 0.0
+var _buckle_total := 1.0
+var _buckle_amount := 1.0
 
 
 func _ready() -> void:
 	_player = get_parent()
-	_is_local = _player != null and _player.is_multiplayer_authority()
+	_is_local = use_fade and _player != null and _player.is_multiplayer_authority()
 	if _player != null:
 		_prev_pos = _player.global_position
+	if variation_seed != 0:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = variation_seed
+		_leg_scale = rng.randf_range(0.85, 1.15)
+		_arm_scale = rng.randf_range(0.85, 1.2)
+		_torso_scale = rng.randf_range(0.85, 1.15)
+		_head_scale = rng.randf_range(0.8, 1.3)
+		_bulk = rng.randf_range(0.85, 1.25)
+		_thigh_len = THIGH_LEN * _leg_scale
+		_shin_len = SHIN_LEN * _leg_scale
+		_base_pelvis_y *= _leg_scale
 	_body_mat = _make_material()
 	_build()
 	set_process(true)
-	print("[BODY] built humanoid with %d joints%s%s"
+	print("[BODY] built humanoid with %d joints%s%s%s"
 			% [joint_count(),
 			" (fade shader)" if _is_local else "",
-			"" if build_human_arms else " (no human arms)"])
+			"" if build_human_arms else " (no human arms)",
+			" (variation seed %d)" % variation_seed if variation_seed != 0 else ""])
 
 
 func _make_material() -> Material:
@@ -93,14 +139,38 @@ func _make_material() -> Material:
 		sh.code = FADE_SHADER
 		var sm := ShaderMaterial.new()
 		sm.shader = sh
-		sm.set_shader_parameter("base_color", Vector3(GRAY.r, GRAY.g, GRAY.b))
+		sm.set_shader_parameter("base_color",
+				Vector3(base_color.r, base_color.g, base_color.b))
 		sm.set_shader_parameter("fade_near", FADE_NEAR)
 		sm.set_shader_parameter("fade_far", FADE_FAR)
 		return sm
 	var m := StandardMaterial3D.new()
-	m.albedo_color = GRAY
+	m.albedo_color = base_color
 	m.roughness = 0.75
 	return m
+
+
+## Buckle one leg (STO-ENEMIES-008): the gait stops driving it and it
+## folds/drags for `time` seconds, so a stumble reads as a real leg
+## giving way rather than a whole-body lean. k: 0 = left, 1 = right.
+func buckle_leg(k: int, time: float, amount := 1.0) -> void:
+	_buckle_leg = clampi(k, 0, 1)
+	_buckle_time = time
+	_buckle_total = maxf(time, 0.001)
+	_buckle_amount = amount
+
+
+func is_buckling() -> bool:
+	return _buckle_time > 0.0
+
+
+## Retint the whole body at runtime (damage flashes, team colors).
+func set_base_color(c: Color) -> void:
+	if _body_mat is ShaderMaterial:
+		(_body_mat as ShaderMaterial).set_shader_parameter(
+				"base_color", Vector3(c.r, c.g, c.b))
+	elif _body_mat is StandardMaterial3D:
+		(_body_mat as StandardMaterial3D).albedo_color = c
 
 
 func _joint(parent: Node3D, jname: String, offset: Vector3) -> Node3D:
@@ -122,39 +192,52 @@ func _seg(joint: Node3D, size: Vector3, center: Vector3) -> void:
 
 
 func _build() -> void:
+	# Shorthand multipliers (all 1.0 without a variation seed).
+	var lg := _leg_scale
+	var ar := _arm_scale
+	var to := _torso_scale
+	var hd := _head_scale
+	var bk := _bulk
+
 	# Spine
 	_pelvis = _joint(self, "Pelvis", Vector3(0.0, _base_pelvis_y, 0.0))
-	_seg(_pelvis, Vector3(0.34, 0.22, 0.22), Vector3.ZERO)
-	var torso := _joint(_pelvis, "Torso", Vector3(0.0, 0.28, 0.0))
-	_seg(torso, Vector3(0.40, 0.44, 0.24), Vector3(0.0, 0.06, 0.0))
-	var neck := _joint(torso, "Neck", Vector3(0.0, 0.30, 0.0))
+	_seg(_pelvis, Vector3(0.34 * bk, 0.22, 0.22 * bk), Vector3.ZERO)
+	var torso := _joint(_pelvis, "Torso", Vector3(0.0, 0.28 * to, 0.0))
+	_torso = torso
+	_seg(torso, Vector3(0.40 * bk, 0.44 * to, 0.24 * bk), Vector3(0.0, 0.06 * to, 0.0))
+	var neck := _joint(torso, "Neck", Vector3(0.0, 0.30 * to, 0.0))
+	_neck = neck
 	_seg(neck, Vector3(0.10, 0.12, 0.10), Vector3.ZERO)
-	var head := _joint(neck, "Head", Vector3(0.0, 0.16, 0.0))
-	_seg(head, Vector3(0.26, 0.30, 0.26), Vector3.ZERO)
+	var head := _joint(neck, "Head", Vector3(0.0, 0.16 * hd, 0.0))
+	_head = head
+	_seg(head, Vector3(0.26 * hd, 0.30 * hd, 0.26 * hd), Vector3.ZERO)
 
 	for side_v in [-1.0, 1.0]:
 		var side := float(side_v)
 		var s := "L" if side < 0.0 else "R"
 
 		# Shoulder nub always exists (the mechanical arms attach here).
-		var shoulder := _joint(torso, "Shoulder" + s, Vector3(0.26 * side, 0.18, 0.0))
+		var shoulder := _joint(torso, "Shoulder" + s,
+				Vector3(0.26 * bk * side, 0.18 * to, 0.0))
 		_seg(shoulder, Vector3(0.15, 0.15, 0.15), Vector3.ZERO)
 		if build_human_arms:
 			var upper := _joint(shoulder, "UpperArm" + s, Vector3.ZERO)
-			_seg(upper, Vector3(0.11, 0.32, 0.11), Vector3(0.0, -0.16, 0.0))
-			var fore := _joint(upper, "Forearm" + s, Vector3(0.0, -0.32, 0.0))
-			_seg(fore, Vector3(0.10, 0.30, 0.10), Vector3(0.0, -0.15, 0.0))
-			var hand := _joint(fore, "Hand" + s, Vector3(0.0, -0.30, 0.0))
+			_seg(upper, Vector3(0.11, 0.32 * ar, 0.11), Vector3(0.0, -0.16 * ar, 0.0))
+			var fore := _joint(upper, "Forearm" + s, Vector3(0.0, -0.32 * ar, 0.0))
+			_seg(fore, Vector3(0.10, 0.30 * ar, 0.10), Vector3(0.0, -0.15 * ar, 0.0))
+			var hand := _joint(fore, "Hand" + s, Vector3(0.0, -0.30 * ar, 0.0))
 			_seg(hand, Vector3(0.12, 0.14, 0.12), Vector3.ZERO)
 			_uppers.append(upper)
+			_forearms.append(fore)
+			_hands.append(hand)
 
 		# Legs
-		var hip := _joint(_pelvis, "Hip" + s, Vector3(0.12 * side, -0.08, 0.0))
+		var hip := _joint(_pelvis, "Hip" + s, Vector3(0.12 * bk * side, -0.08, 0.0))
 		var thigh := _joint(hip, "Thigh" + s, Vector3.ZERO)
-		_seg(thigh, Vector3(0.15, 0.42, 0.15), Vector3(0.0, -0.21, 0.0))
-		var shin := _joint(thigh, "Shin" + s, Vector3(0.0, -0.42, 0.0))
-		_seg(shin, Vector3(0.13, 0.42, 0.13), Vector3(0.0, -0.21, 0.0))
-		var foot := _joint(shin, "Foot" + s, Vector3(0.0, -0.42, 0.0))
+		_seg(thigh, Vector3(0.15, _thigh_len, 0.15), Vector3(0.0, -_thigh_len / 2.0, 0.0))
+		var shin := _joint(thigh, "Shin" + s, Vector3(0.0, -_thigh_len, 0.0))
+		_seg(shin, Vector3(0.13, _shin_len, 0.13), Vector3(0.0, -_shin_len / 2.0, 0.0))
+		var foot := _joint(shin, "Foot" + s, Vector3(0.0, -_shin_len, 0.0))
 		_seg(foot, Vector3(0.14, 0.09, 0.28), Vector3(0.0, -0.04, 0.06))
 		_hips.append(hip)
 		_thighs.append(thigh)
@@ -200,7 +283,30 @@ func _process(delta: float) -> void:
 	# Flat, forward-facing foot orientation (same for both feet).
 	var foot_basis := Basis.looking_at(-forward, Vector3.UP)
 
+	# A buckling leg stops taking steps: its foot goes slack, collapsing
+	# toward (and dragging behind) the hip while the other leg carries.
+	if _buckle_time > 0.0:
+		_buckle_time -= delta
+		var bt := clampf(_buckle_time / _buckle_total, 0.0, 1.0)
+		var k := _buckle_leg
+		var hip_w: Vector3 = _hips[k].global_position
+		var slack := hip_w + Vector3.DOWN * (_thigh_len + _shin_len) \
+				* (1.0 - 0.45 * bt * _buckle_amount) \
+				- move_dir * (0.35 * bt * _buckle_amount)
+		slack.y = maxf(slack.y, ground_y)
+		_foot_pos[k] = _foot_pos[k].lerp(slack, clampf(delta * 14.0, 0.0, 1.0))
+		_stepping[k] = false
+		if _buckle_time <= 0.0:
+			_buckle_leg = -1
+
 	for k in _hips.size():
+		if k == _buckle_leg:
+			# Slack leg: solve IK to the collapsed foot, skip stepping.
+			_solve_leg(k, _hips[k].global_position, _foot_pos[k], forward)
+			var bfoot: Node3D = _feet[k]
+			bfoot.global_transform = Transform3D(foot_basis,
+					_foot_pos[k] + Vector3.UP * FOOT_RAISE)
+			continue
 		var hip_world: Vector3 = _hips[k].global_position
 		# When moving, aim the foot ahead of the hip AND lead it to where the
 		# hip will be after the step, so fast movement doesn't leave the
@@ -267,9 +373,9 @@ func _solve_leg(k: int, hip: Vector3, foot: Vector3, forward: Vector3) -> void:
 	if real_d < 0.001:
 		return
 	var dir := (foot - hip) / real_d
-	var dd := clampf(real_d, 0.05, THIGH_LEN + SHIN_LEN - 0.02)
-	var a := (THIGH_LEN * THIGH_LEN - SHIN_LEN * SHIN_LEN + dd * dd) / (2.0 * dd)
-	var h := sqrt(maxf(0.0, THIGH_LEN * THIGH_LEN - a * a))
+	var dd := clampf(real_d, 0.05, _thigh_len + _shin_len - 0.02)
+	var a := (_thigh_len * _thigh_len - _shin_len * _shin_len + dd * dd) / (2.0 * dd)
+	var h := sqrt(maxf(0.0, _thigh_len * _thigh_len - a * a))
 	var bn := forward - dir * forward.dot(dir)
 	bn = bn.normalized() if bn.length() > 0.001 else Vector3.FORWARD
 	var knee := hip + dir * a + bn * h
@@ -294,6 +400,56 @@ func _aim_basis(from: Vector3, to: Vector3, forward: Vector3) -> Basis:
 func foot_world(k: int) -> Vector3:
 	var f: Vector3 = _foot_pos[k]
 	return f
+
+
+## World position of a knee (the shin joint's origin).
+func knee_world(k: int) -> Vector3:
+	var s: Node3D = _shins[k]
+	return s.global_position
+
+
+## Leg bone capsules as [[a, b, radius], ...] in world space — thigh
+## and shin per leg. Used by the tail to drape over the legs
+## (STO-CHARACTER-034).
+func leg_capsules() -> Array:
+	var out: Array = []
+	for k in _hips.size():
+		var hip: Vector3 = _hips[k].global_position
+		var knee: Vector3 = knee_world(k)
+		var foot: Vector3 = _feet[k].global_position
+		out.append([hip, knee, 0.11])
+		out.append([knee, foot, 0.10])
+	return out
+
+
+## EVERY solid bone as a world-space capsule [[a, b, radius], ...]:
+## torso, neck+head, both arms (upper + forearm/hand) and both legs.
+## Radii come from the built segment sizes, so they follow this
+## individual's procedural proportions. The tail is pushed out of all
+## of them (STO-CHARACTER-035).
+func body_capsules() -> Array:
+	var out: Array = leg_capsules()
+	if _pelvis == null:
+		return out
+
+	# Torso: pelvis up to the neck — the thickest capsule.
+	if _torso != null and _neck != null:
+		out.append([_pelvis.global_position, _neck.global_position,
+				0.20 * _bulk])
+	# Neck + head: up through the skull.
+	if _neck != null and _head != null:
+		var head_top: Vector3 = _head.global_position \
+				+ _head.global_transform.basis.y * (0.15 * _head_scale)
+		out.append([_neck.global_position, head_top, 0.15 * _head_scale])
+
+	# Arms: shoulder -> elbow -> hand (only if human arms were built).
+	for k in _uppers.size():
+		var shoulder: Vector3 = (_uppers[k] as Node3D).global_position
+		var elbow: Vector3 = (_forearms[k] as Node3D).global_position
+		var hand: Vector3 = (_hands[k] as Node3D).global_position
+		out.append([shoulder, elbow, 0.09])
+		out.append([elbow, hand, 0.085])
+	return out
 
 
 ## World position of a hip joint (for tests).

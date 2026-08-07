@@ -30,6 +30,28 @@ const TAIL_HIT_RADIUS := 0.75
 const TAIL_DAMAGE_SCALE := 0.9
 const TAIL_DAMAGE_CAP := 40.0
 const TAIL_HIT_COOLDOWN := 0.35   # per-enemy, so one swing = one hit
+## A swipe faster than this TRIPS the enemy — it falls over and
+## tumbles (STO-ENEMIES-004). Roughly double the damage threshold.
+const TAIL_TRIP_SPEED := 9.0
+const TAIL_TRIP_SCALE := 0.55     # swipe velocity -> trip push
+const TAIL_TRIP_MAX := 9.0        # cap on the horizontal trip push
+## Body collision (STO-CHARACTER-034): the tail is pushed out of the
+## player's torso and leg bones, so it drapes over and wraps around a
+## leg instead of phasing through. Ray collision alone can't do this —
+## the legs are procedural visuals with no physics shapes — so we
+## push points out of analytic capsules each solver pass.
+const TORSO_RADIUS := 0.34
+const TORSO_LOW := 0.30           # torso capsule, relative to player origin
+const TORSO_HIGH := 1.45
+const BODY_PUSH_FROM := 2         # first segment that collides with the body
+const BODY_FRICTION := 0.55       # velocity kept when the tail rubs the body
+## Layers the tail's world rays may hit (STO-ENEMIES-009). Layer 1 =
+## world + standing bodies. Ragdoll parts (layer 2) are EXCLUDED: a
+## tumbling ragdoll would otherwise snap tail points around every
+## frame, and the resulting fake velocity spikes read as tail "hits",
+## which shoved the ragdoll again — a feedback loop that made both
+## spaz out.
+const RAY_MASK := 1
 
 var _hit_cd: Dictionary = {}
 
@@ -128,11 +150,25 @@ func _physics_process(delta: float) -> void:
 		for i in range(_points.size()):
 			if _points[i].y < FLOOR_Y:
 				_points[i].y = FLOOR_Y
+		_push_out_of_body()
 
 	# A fast-swinging tail hurts enemies it hits (STO-CHARACTER-020). Done
 	# BEFORE the collision resolve below, which zeroes point velocities.
 	if _player != null and _player.is_multiplayer_authority():
 		_hit_enemies(delta)
+
+	# GIZMO (STO-TOOLS-003): mark weapon-speed segments and their
+	# swipe velocity. Orange = damage speed, red = trip speed.
+	if DebugOverlay.should_draw("player/tail", _player):
+		for i in range(2, _points.size()):
+			var gvel := (_points[i] - _prev[i]) / delta
+			var gspeed := gvel.length()
+			if gspeed < TAIL_MIN_SPEED:
+				continue
+			var col := Color.RED if gspeed >= TAIL_TRIP_SPEED else Color.ORANGE
+			DebugOverlay.draw_point3("player/tail", _player, _points[i], 0.1, col)
+			DebugOverlay.draw_line3("player/tail", _player,
+					_points[i], _points[i] + gvel * 0.06, col)
 
 	# Collide with all solid geometry — including the player's body (so the
 	# tail clips against the player, not through them). The first couple of
@@ -142,7 +178,8 @@ func _physics_process(delta: float) -> void:
 	for i in range(1, _points.size()):
 		if _points[i - 1].distance_to(_points[i]) < 1e-4:
 			continue
-		var q := PhysicsRayQueryParameters3D.create(_points[i - 1], _points[i])
+		var q := PhysicsRayQueryParameters3D.create(_points[i - 1], _points[i],
+				RAY_MASK)
 		if _player != null and i < 3:
 			q.exclude = [_player.get_rid()]
 		var chit := space.intersect_ray(q)
@@ -155,6 +192,56 @@ func _physics_process(delta: float) -> void:
 	for s in range(segment_count):
 		var part: Node3D = _parts[s]
 		_orient(part, _points[s], _points[s + 1])
+
+
+## Push tail points out of EVERY body bone — torso, neck/head, arms
+## and legs — so the tail rests on and wraps around the player instead
+## of phasing through any part (STO-CHARACTER-034/035).
+func _push_out_of_body() -> void:
+	if _player == null:
+		return
+
+	var body: Node = _player.get_node_or_null("Body")
+	if body != null and body.has_method("body_capsules"):
+		for cap in body.call("body_capsules"):
+			for i in range(BODY_PUSH_FROM, _points.size()):
+				_push_point_out(i, cap[0], cap[1], cap[2])
+	else:
+		# No procedural body (shouldn't happen) — fall back to a single
+		# torso capsule through the player's middle.
+		var origin: Vector3 = _player.global_position
+		for i in range(BODY_PUSH_FROM, _points.size()):
+			_push_point_out(i, origin + Vector3.UP * TORSO_LOW,
+					origin + Vector3.UP * TORSO_HIGH, TORSO_RADIUS)
+
+
+## Move point i to the surface of the capsule (a, b, radius) if it is
+## inside, and bleed the velocity along it so the tail settles/drapes
+## instead of squirting away.
+func _push_point_out(i: int, a: Vector3, b: Vector3, radius: float) -> void:
+	var p := _points[i]
+	var ab := b - a
+	var len_sq := ab.length_squared()
+	var closest := a
+	if len_sq > 1e-6:
+		closest = a + ab * clampf((p - a).dot(ab) / len_sq, 0.0, 1.0)
+	var out := p - closest
+	var d := out.length()
+	if d >= radius:
+		return
+	if d < 1e-4:
+		# Dead centre: push out sideways rather than picking a NaN axis.
+		out = Vector3(ab.z, 0.0, -ab.x)
+		if out.length() < 1e-4:
+			out = Vector3.RIGHT
+		d = out.length()
+	var normal := out / d
+	_points[i] = closest + normal * radius
+	# Damp the motion that drove it in, keeping the sliding part: the
+	# tail slides over a leg instead of bouncing off it.
+	var vel := _points[i] - _prev[i]
+	var into := normal * vel.dot(normal)
+	_prev[i] = _points[i] - ((vel - into) * BODY_FRICTION)
 
 
 func _hit_enemies(delta: float) -> void:
@@ -172,6 +259,11 @@ func _hit_enemies(delta: float) -> void:
 		for e in enemies:
 			if not is_instance_valid(e):
 				continue
+			# Already knocked down? Don't sweep them again — repeatedly
+			# tripping a ragdolling enemy re-shoved it every contact
+			# (STO-ENEMIES-009). They're down; leave them be.
+			if e.has_method("is_downed") and e.call("is_downed"):
+				continue
 			var node := e as Node3D
 			var eid := node.get_instance_id()
 			if float(_hit_cd.get(eid, 0.0)) > 0.0:
@@ -184,6 +276,11 @@ func _hit_enemies(delta: float) -> void:
 				elif node.has_method("take_damage"):
 					node.call("take_damage", dmg)
 					_hit_cd[eid] = TAIL_HIT_COOLDOWN
+				# A hard swipe sweeps them off their feet (STO-ENEMIES-004).
+				if speed >= TAIL_TRIP_SPEED and node.has_method("trip"):
+					var push := Vector3(vel.x, 0.0, vel.z) * TAIL_TRIP_SCALE
+					push = push.limit_length(TAIL_TRIP_MAX)
+					node.call("trip", push + Vector3.UP * 2.5)
 
 
 func _orient(part: Node3D, a: Vector3, b: Vector3) -> void:
@@ -204,6 +301,18 @@ func base_point() -> Vector3:
 
 func tip_point() -> Vector3:
 	return _points[_points.size() - 1]
+
+## Any chain point by index (for tests).
+func point_at(i: int) -> Vector3:
+	return _points[clampi(i, 0, _points.size() - 1)]
+
+
+## Force a chain point somewhere (tests only — used to prove the body
+## push-out ejects points jammed inside the player).
+func set_point_for_test(i: int, p: Vector3) -> void:
+	var k := clampi(i, 0, _points.size() - 1)
+	_points[k] = p
+	_prev[k] = p
 
 func mid_point() -> Vector3:
 	return _points[_points.size() / 2]

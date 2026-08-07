@@ -5,7 +5,7 @@ effort: enemies
 status: shipped
 date: 2026-08-03
 bd-id: delve-pne
-shipped: 2026-08-03
+shipped: 2026-08-06
 ---
 
 # Enemies
