@@ -3,10 +3,9 @@ xid: EPI-ENEMIES-ENEMY-HEALTH
 parent: ../design.md
 kind: epic
 effort: enemies
-status: shipped
+status: open
 date: 2026-08-03
 bd-id: delve-2d7
-shipped: 2026-08-03
 ---
 
 # Enemies have health

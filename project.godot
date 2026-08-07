@@ -85,7 +85,4 @@ ability_guard={
 
 [rendering]
 
-; Required for the universal (Apple Silicon + Intel) macOS export —
-; Godot refuses to build for arm64 without it. Costs us nothing:
-; delve has no imported textures, every material is procedural.
 textures/vram_compression/import_etc2_astc=true

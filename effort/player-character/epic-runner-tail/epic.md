@@ -3,10 +3,9 @@ xid: EPI-CHARACTER-RUNNER-TAIL
 parent: ../design.md
 kind: epic
 effort: character
-status: shipped
+status: open
 date: 2026-08-03
 bd-id: delve-401
-shipped: 2026-08-03
 ---
 
 # The Runner's physics tail

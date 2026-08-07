@@ -380,6 +380,30 @@ func take_damage(amount: float) -> void:
 		_respawn()
 
 
+## An enemy hit us (STO-ENEMIES-011).
+##
+## Enemy AI runs only on the server, but a player's health lives on the
+## machine that OWNS that player — health is not a replicated property.
+## So the server cannot just call take_damage on its own copy of a
+## remote player: it would drain a health bar nobody is looking at,
+## while the real player felt nothing.
+func hurt_by_enemy(amount: float) -> void:
+	if is_multiplayer_authority():
+		take_damage(amount)
+	else:
+		_remote_enemy_damage.rpc_id(get_multiplayer_authority(), amount)
+
+
+## Sent by the server to whoever owns this player. "any_peer" rather
+## than "authority" because the sender is the SERVER, while this node's
+## authority is the owning client — so we check the sender by hand.
+@rpc("any_peer", "call_remote", "reliable")
+func _remote_enemy_damage(amount: float) -> void:
+	if multiplayer.get_remote_sender_id() != 1:
+		return          # only the server decides that an enemy hit you
+	take_damage(amount)
+
+
 func is_blocking() -> bool:
 	return _blocking
 

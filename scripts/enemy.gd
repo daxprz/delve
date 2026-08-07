@@ -35,6 +35,24 @@ const RAGDOLL_TIMEOUT := 2.5   # extra seconds to wait for rest before forcing g
 
 const RagdollScript := preload("res://scripts/ragdoll.gd")
 
+# Attacks (STO-ENEMIES-011). Until now enemies chased and did nothing,
+# so nothing in delve could hurt you — health, healing, the Grabber's
+# guard and the Runner's dodge roll all existed with no threat to use
+# them against.
+#
+# A swing is deliberately slow and telegraphed: the enemy stops, rears
+# back for ATTACK_WINDUP seconds, and only then does damage. Being hit
+# should always be a thing you could have avoided.
+const ATTACK_RANGE := 2.2       # how close it must be to swing
+const ATTACK_DAMAGE := 12.0     # a full-strength hit
+const ATTACK_WINDUP := 0.55     # telegraph before the blow lands
+const ATTACK_COOLDOWN := 1.8    # rest between swings
+const ATTACK_LEAN := 0.30       # how far it rears back while winding up
+## The hit is checked again at the END of the wind-up, from slightly
+## further out than the trigger range — step away and it misses, but a
+## hair of tolerance stops it feeling like it whiffed unfairly.
+const ATTACK_REACH := 2.6
+
 var _downed := 0.0
 var _getup := 0.0
 var _body_angle := 0.0          # getup blend: PI/2 (lying) -> 0 (upright)
@@ -51,6 +69,9 @@ var _stability := 1.0           # resistance to being knocked down
 var _stagger := 0.0
 var _health := MAX_HEALTH
 var _carried := false
+var _windup := 0.0              # >0 while rearing back to strike
+var _attack_cd := 0.0           # rest timer between swings
+var _swings := 0                # how many blows landed (tests read this)
 var _stumble := 0.0             # stumble timer
 var _stumble_axis := Vector3.RIGHT
 var _stumble_leg := 0           # which leg buckles (0=L, 1=R)
@@ -174,6 +195,25 @@ func _physics_process(delta: float) -> void:
 					STUMBLE_LEAN * sin((1.0 - t) * PI)) \
 					if t > 0.0 else Basis()
 
+	# Attacking (STO-ENEMIES-011). Handled before the chase logic so a
+	# winding-up enemy plants its feet instead of walking through you.
+	if _attack_cd > 0.0:
+		_attack_cd -= delta
+	if _windup > 0.0:
+		_windup -= delta
+		# Rear back, then snap through. The lean IS the telegraph.
+		if _body != null:
+			var t := 1.0 - clampf(_windup / ATTACK_WINDUP, 0.0, 1.0)
+			_body.transform.basis = Basis(Vector3.RIGHT, -ATTACK_LEAN * sin(t * PI))
+		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
+		velocity.z = move_toward(velocity.z, 0.0, FRICTION * delta)
+		if _windup <= 0.0:
+			if _body != null:
+				_body.transform.basis = Basis()
+			_land_blow()
+		move_and_slide()
+		return
+
 	if _stagger > 0.0:
 		# Knocked back — let it slide, don't steer.
 		_stagger -= delta
@@ -203,11 +243,88 @@ func _physics_process(delta: float) -> void:
 			velocity.z = move_toward(velocity.z, 0.0, FRICTION * delta)
 
 	move_and_slide()
-	# Enemies only chase — they do not deal damage.
+
+	# Close enough to swing? Start the wind-up (STO-ENEMIES-011).
+	if _attack_cd <= 0.0 and _windup <= 0.0 and not _carried:
+		var prey := _nearest_player()
+		if prey != null and _can_strike(prey, ATTACK_RANGE):
+			_windup = ATTACK_WINDUP
+			_attack_cd = ATTACK_COOLDOWN + ATTACK_WINDUP
+			DebugOverlay.log("enemy/combat", self, "%s: winding up at %s",
+					[name, prey.name])
 
 	# Fall damage: landing hard (e.g. dropped from height) hurts.
 	if is_on_floor() and fall_speed > FALL_SAFE_SPEED:
 		take_damage((fall_speed - FALL_SAFE_SPEED) * FALL_DAMAGE_SCALE)
+
+
+## Can we hit `prey` from here — close enough, and nothing solid in
+## between? (STO-ENEMIES-011)
+##
+## The wall check matters: without it an enemy stuck on the far side
+## of a maze wall would keep clobbering you through it, which reads as
+## the game cheating rather than as a fight.
+func _can_strike(prey: Node3D, reach: float) -> bool:
+	if prey == null or not is_instance_valid(prey):
+		return false
+	var to := prey.global_position - global_position
+	if Vector2(to.x, to.z).length() > reach:
+		return false
+	if absf(to.y) > 2.0:      # far above or below us — not reachable
+		return false
+	# Chest height on both ends, so the ray doesn't clip the floor.
+	var from_p := global_position + Vector3.UP * 1.0
+	var to_p := prey.global_position + Vector3.UP * 1.0
+	var q := PhysicsRayQueryParameters3D.create(from_p, to_p)
+	# Everything in delve sits on collision layer 1 — world, players,
+	# enemies and ragdoll parts alike — so a mask cannot separate "wall"
+	# from "the very player we are aiming at". Exclude both ends and
+	# judge what we hit by TYPE instead: only static geometry is a wall.
+	q.exclude = [get_rid(), prey.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty() and hit.get("collider") is StaticBody3D:
+		DebugOverlay.log("enemy/combat", self, "%s: blocked by %s",
+				[name, String((hit["collider"] as Node).name)])
+		return false
+	return true
+
+
+## The wind-up has finished — actually hit them, if they are still there.
+func _land_blow() -> void:
+	var prey := _nearest_player()
+	if prey == null or not _can_strike(prey, ATTACK_REACH):
+		DebugOverlay.log("enemy/combat", self, "%s: swing missed", [name])
+		return
+	var dmg := attack_damage()
+	if dmg <= 0.0:
+		DebugOverlay.log("enemy/combat", self, "%s: swings harmlessly", [name])
+		return
+	_swings += 1
+	DebugOverlay.draw_line3("enemy/hits", self,
+			global_position + Vector3.UP, prey.global_position + Vector3.UP,
+			Color.ORANGE_RED)
+	DebugOverlay.log("enemy/combat", self, "%s: hits %s for %.0f",
+			[name, prey.name, dmg])
+	if prey.has_method("hurt_by_enemy"):
+		prey.call("hurt_by_enemy", dmg)
+	elif prey.has_method("take_damage"):
+		prey.call("take_damage", dmg)
+
+
+## How hard this enemy hits. A plain enemy hits for ATTACK_DAMAGE;
+## STO-ENEMIES-015 reduces it as arms are torn off.
+func attack_damage() -> float:
+	return ATTACK_DAMAGE
+
+
+## Blows landed, for tests.
+func swings() -> int:
+	return _swings
+
+
+## True while rearing back to strike — the telegraph window.
+func is_winding_up() -> bool:
+	return _windup > 0.0
 
 
 func _nearest_player() -> Node3D:

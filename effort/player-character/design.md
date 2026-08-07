@@ -2,10 +2,9 @@
 xid: DES-CHARACTER-001
 kind: design
 effort: character
-status: shipped
+status: open
 date: 2026-08-03
 bd-id: delve-85y
-shipped: 2026-08-03
 ---
 
 # The Player Character
