@@ -42,10 +42,36 @@ notes now explain both ways past it (right-click → Open, or
 
 ## Verification notes (2026-08-07)
 
-- Confirmed the 4.6.3 `export_templates.tpz` is what supplies the
-  macOS templates, so no extra download is needed.
-- **Not verifiable locally**: no export templates on this machine and
-  no Mac to run the result on. CI proves it *builds*; whether the app
-  actually launches needs someone with a Mac to try it. The most
-  likely snags are the unsigned-app warning (documented) and the
-  universal-binary architecture setting.
+The first attempt (tag v0.1.1) **failed in CI**, and the job log needs
+repo-admin rights to read — so rather than guess, the export was
+reproduced locally by downloading the same Godot build and templates
+CI uses. The real error appeared immediately:
+
+> Cannot export for universal or arm64 if ETC2 ASTC texture format is
+> disabled.
+
+Godot refuses to build for Apple Silicon without that texture format.
+Fixed by enabling `rendering/textures/vram_compression/import_etc2_astc`
+in project settings and `texture_format/etc2_astc` in the preset. It
+costs delve nothing — there are no imported textures, every material
+is procedural.
+
+After the fix, verified locally rather than hoping:
+
+- export succeeds, producing a 61.7 MB zip;
+- it contains a real bundle (`Delve.app/Contents/...`);
+- `file` reports **Mach-O universal binary, x86_64 + arm64**;
+- the Linux export still works, so the project-settings change broke
+  nothing.
+
+Also caught: the bundle is `Delve.app` (capitalised), so the
+Gatekeeper instructions in the release notes were corrected.
+
+Still unverified: whether the app actually **launches** on a real Mac.
+CI and local export prove it builds; only a Mac can prove the rest.
+
+**Worth noting** — the guard `test -s <exported file>` in the workflow
+is what turned this into a visible failure. Godot exited with code
+**0** despite printing the error and producing no file, so without
+that check CI would have reported success and published an empty
+release.

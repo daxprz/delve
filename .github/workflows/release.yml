@@ -124,9 +124,9 @@ jobs:
             ---
 
             **On macOS**, the app is unsigned, so the first launch is
-            blocked. Either right-click `delve.app` → **Open** → **Open**,
+            blocked. Either right-click `Delve.app` → **Open** → **Open**,
             or run this once in Terminal:
 
             ```
-            xattr -cr /path/to/delve.app
+            xattr -cr /path/to/Delve.app
             ```
