@@ -46,23 +46,13 @@ const JOINTS := [
 ## masks this layer out so a tumbling ragdoll can't drag the Verlet
 ## chain around (STO-ENEMIES-009).
 const RAGDOLL_LAYER := 2
+const PartScript := preload("res://scripts/ragdoll_part.gd")
 
-# Stabilizer caps: hard wall/corner contacts can spike a small part's
-# velocities into the hundreds — physically "real" but visually a
-# freak-out. Clamp per tick to keep tumbles violent-but-plausible.
-const MAX_LIN_VEL := 22.0
-const MAX_ANG_VEL := 18.0
+## Velocity limiting lives in ragdoll_part.gd's _integrate_forces —
+## inside the physics step, where it can actually prevent a bad
+## contact instead of cleaning up after one.
 
 var _parts: Dictionary = {}  # name -> RigidBody3D
-
-
-func _physics_process(_delta: float) -> void:
-	for pname in _parts:
-		var rb: RigidBody3D = _parts[pname]
-		if rb.linear_velocity.length() > MAX_LIN_VEL:
-			rb.linear_velocity = rb.linear_velocity.normalized() * MAX_LIN_VEL
-		if rb.angular_velocity.length() > MAX_ANG_VEL:
-			rb.angular_velocity = rb.angular_velocity.normalized() * MAX_ANG_VEL
 
 
 ## Build parts + joints from the body's current pose. Returns the
@@ -90,6 +80,15 @@ func build_from_body(body: Node3D, mass_scale: float) -> int:
 		# collide with the world (layer 1) but never with each other.
 		rb.collision_layer = RAGDOLL_LAYER
 		rb.collision_mask = 1
+		# Clamp velocities INSIDE the physics step (STO-ENEMIES-010).
+		# Post-step clamping in _physics_process was too late: a part
+		# that tunnelled into a thin wall was already ejected, and the
+		# joints had already been yanked past their limits.
+		rb.set_script(PartScript)
+		# With velocities bounded by the part script, sweeping is now
+		# stable (unbounded + CCD fought the joints badly) and stops
+		# parts passing through 0.3 m walls.
+		rb.continuous_cd = true
 		add_child(rb)
 		rb.global_transform = mesh.global_transform.orthonormalized()
 		var cs := CollisionShape3D.new()

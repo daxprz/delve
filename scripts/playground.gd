@@ -58,6 +58,10 @@ func _build_box() -> void:
 	var phys := PhysicsMaterial.new()
 	phys.friction = 0.15
 	body.physics_material_override = phys
+	# Thrown at ~22 m/s it would cover 0.37 m per tick — more than a
+	# procmap wall is thick — and tunnel straight through
+	# (STO-ENEMIES-010). Sweep instead.
+	body.continuous_cd = true
 
 	var shape := CollisionShape3D.new()
 	var box_shape := BoxShape3D.new()
