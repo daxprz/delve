@@ -17,6 +17,7 @@ var _mat: StandardMaterial3D
 var _health := MAX_HEALTH
 var _flash := 0.0
 var _carried := false
+var _last_target := ""  # for enemy/ai debug aspect (log on change only)
 
 
 func _ready() -> void:
@@ -76,6 +77,12 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0.0, FRICTION * delta)
 	else:
 		var target := _nearest_player()
+		var target_name: String = target.name if target != null else "(none)"
+		if target_name != _last_target:
+			DebugOverlay.log("enemy/ai", self, "%s: target %s -> %s",
+					[name, _last_target if _last_target != "" else "(none)",
+					target_name])
+			_last_target = target_name
 		if target != null:
 			var to := target.global_position - global_position
 			to.y = 0.0
@@ -124,9 +131,12 @@ func apply_knockback(impulse: Vector3) -> void:
 func take_damage(amount: float) -> void:
 	_health -= amount
 	_flash = 0.12
+	DebugOverlay.log("enemy/combat", self, "%s: -%.0f hp -> %.0f",
+			[name, amount, maxf(_health, 0.0)])
 	if _mat != null:
 		_mat.albedo_color = Color(1, 1, 1)  # white flash
 	if _health <= 0.0:
+		DebugOverlay.log("enemy/combat", self, "%s: defeated", [name])
 		queue_free()
 
 

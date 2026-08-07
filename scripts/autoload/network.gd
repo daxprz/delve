@@ -6,6 +6,14 @@ const DEFAULT_PORT := 7777
 const DEFAULT_ADDRESS := "127.0.0.1"
 
 
+func _ready() -> void:
+	# network/peers debug aspect (STO-TOOLS-002).
+	multiplayer.peer_connected.connect(func(id: int) -> void:
+		DebugOverlay.log("network/peers", self, "peer %d connected", [id]))
+	multiplayer.peer_disconnected.connect(func(id: int) -> void:
+		DebugOverlay.log("network/peers", self, "peer %d disconnected", [id]))
+
+
 func host(port := DEFAULT_PORT) -> Error:
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(port)

@@ -214,6 +214,7 @@ func _on_peer_disconnected(id: int) -> void:
 
 
 func _spawn_player(id: int) -> void:
+	DebugOverlay.log("network/spawn", self, "spawning player for peer %d", [id])
 	var player: CharacterBody3D = PLAYER_SCENE.instantiate()
 	player.name = str(id)  # peer id doubles as node name -> authority
 	player.position = spawn_point.position

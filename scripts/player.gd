@@ -215,7 +215,10 @@ func take_damage(amount: float) -> void:
 	_health = maxf(0.0, _health - amount)
 	_regen_timer = HEAL_DELAY  # pause heal-over-time after a hit
 	_combo = 0  # getting hit breaks your combo
+	DebugOverlay.log("player/combat", self, "%s: -%.0f hp -> %.0f/%.0f",
+			[name, amount, _health, _max_health])
 	if _health <= 0.0:
+		DebugOverlay.log("player/combat", self, "%s: died, respawning", [name])
 		_respawn()
 
 
@@ -238,6 +241,8 @@ func deal_damage(target, amount: float) -> void:
 		mult *= COMBO_AIR_BONUS
 	target.call("take_damage", amount * mult)
 	_combo += 1
+	DebugOverlay.log("player/combat", self, "%s: hit %s for %.0f (combo x%d)",
+			[name, target.name, amount * mult, _combo])
 
 
 func combo() -> int:
@@ -558,6 +563,8 @@ func do_zip() -> void:
 	_zip_target = hit["position"]
 	_zipping = true
 	_zip_time = 0.0
+	DebugOverlay.log("player/abilities", self, "%s: zip -> (%.1f, %.1f, %.1f)",
+			[name, _zip_target.x, _zip_target.y, _zip_target.z])
 
 
 ## Test hook: zip to an explicit point (no aim needed).
@@ -604,6 +611,7 @@ func _grab_throwable() -> void:
 	if target == null:
 		return
 	_held = target
+	DebugOverlay.log("player/abilities", self, "%s: grabbed %s", [name, target.name])
 	if _held.has_method("set_carried"):
 		_held.call("set_carried", true)
 	elif _held is RigidBody3D:
@@ -695,6 +703,7 @@ func do_dodge() -> void:
 	_roll_dir = dir.normalized() if dir.length() > 0.001 else -transform.basis.z
 	_rolling = true
 	_roll_time = 0.0
+	DebugOverlay.log("player/abilities", self, "%s: dodge roll", [name])
 
 
 func _roll_move(delta: float) -> void:

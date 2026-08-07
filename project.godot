@@ -10,7 +10,10 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 
 [autoload]
 
+DebugOverlay="*res://scripts/autoload/debug_overlay.gd"
+DebugAspects="*res://scripts/autoload/debug_aspects.gd"
 Network="*res://scripts/autoload/network.gd"
+Rcon="*res://scripts/autoload/rcon.gd"
 
 [input]
 
