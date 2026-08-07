@@ -371,6 +371,7 @@ func _knockdown(dv: Vector3, swept: bool) -> void:
 	_downed = DOWN_TIME * (0.75 + 0.5 * _mass)  # heavy = down longer
 	_getup = 0.0
 	_stagger = 0.0
+	Sounds.make(global_position, Sounds.RAGDOLL_LANDING)
 	DebugOverlay.log("enemy/combat", self,
 			"%s: ragdolled (%d parts, m=%.2f, dv=%.1f%s)",
 			[name, parts, _mass, dv.length(), ", swept" if swept else ""])

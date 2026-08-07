@@ -1,70 +1,90 @@
 class_name EchoVision
 extends Node3D
-## Echo-sight for the blind Sniper (STO-CHARACTER-040).
+## Echo-sight for the blind Sniper (STO-CHARACTER-040/050).
 ##
-## The Sniper's camera does not render the world at all (its cull mask
-## drops the world's visual layer), so its screen is black. Instead,
-## anything that MOVES emits an echo pulse: rays are cast outward from
-## the mover, and wherever they strike MAP geometry a small outline
-## mark is drawn. The marks fade over a moment, so the world is only
-## ever briefly sketched in.
+## The Sniper's camera renders nothing at all — its cull mask drops the
+## world's visual layer — so the screen is black. Everything it knows
+## is drawn here, as marks left on the surfaces of the room.
 ##
-## Operator decisions (2026-08-07):
-##   - only the WALLS around a mover are outlined, never the mover
-##     itself — you learn a room's shape, not what is in it;
-##   - marks are FAINTER the further they are from the Sniper, so
-##     distant movement is a hint and you must close in to read it.
+## Two kinds of mark, deliberately different colours so you can tell
+## memory from movement at a glance:
+##
+##   LIDAR (white)  — an aimed RMB sweep. Long-lived: the room you
+##                    scanned stays in your memory for minutes, fading
+##                    white -> grey -> black. This is your map.
+##   SOUND (red)    — something happened. Footsteps, gunshots,
+##                    punches, bodies hitting the floor. Fades
+##                    red -> grey-red -> black-red. This is your alarm.
+##
+## Operator decisions:
+##   - only the room is outlined by SOUND, never the creature itself
+##     (2026-08-07);
+##   - the lidar may show creatures, and paints them red (2026-08-07);
+##   - lidar memory lasts 5 minutes and a fresh sweep REPLACES the old
+##     marks near each new hit, so rescanning refreshes rather than
+##     piling up (2026-08-07).
 
-## Visual layer the echo marks are drawn on. The Sniper's camera sees
-## ONLY this layer; every other camera ignores it.
+## Visual layer the marks are drawn on. The Sniper's camera sees ONLY
+## this layer; every other camera ignores it.
 const ECHO_LAYER := 2
 ## World geometry lives on physics layer 1.
 const WORLD_MASK := 1
 
-const PULSE_INTERVAL := 0.12    # min seconds between pulses per mover
-## Even a gentle walk must ring the room clearly (STO-CHARACTER-043):
-## the threshold is low, the base reach is generous, and the strength
-## floor is high, so walking gives a proper ripple rather than a faint
-## flicker. Speed still matters — a sprint reaches much further and
-## burns brighter — but a walk is never nearly-invisible.
+# --- what makes a sound -----------------------------------------------
+const PULSE_INTERVAL := 0.12    # min seconds between footstep pulses per mover
 const MIN_MOVE_SPEED := 0.35    # slower than this makes no sound
 const RAYS_PER_PULSE := 26
-const BLAST_RAYS := 110      # a gunshot draws the room properly
-const SCAN_FADE := 1.4       # seconds a lidar scan takes to fade away
-const PULSE_RADIUS_BASE := 6.5  # metres, at MIN_MOVE_SPEED
+const PULSE_RADIUS_BASE := 6.5
 const PULSE_RADIUS_PER_SPEED := 0.9
 const PULSE_RADIUS_MAX := 16.0
-const STRENGTH_FLOOR := 0.72    # brightness of the quietest audible move
-## Heavier creatures are LOUDER (STO-CHARACTER-043): a big enemy's
-## footfall carries further and burns brighter than a small one's, so
-## the Sniper can tell something heavy is coming before it arrives.
-## Reads the procedural build's relative mass (Enemy.mass(), ~0.75-1.5
-## where 1.0 is average); anything without one counts as average.
+const STRENGTH_FLOOR := 0.72
+## Heavier creatures are louder, from their generated build.
 const LOUDNESS_MIN := 0.7
 const LOUDNESS_MAX := 1.55
-const QUIET_FLOOR := 0.3        # even the lightest mover stays visible
-## The echo travels as an expanding WAVE (STO-CHARACTER-041): a
-## surface lights up as the wavefront sweeps over it, then dims behind
-## it, and the whole wave weakens as it spreads outward.
-const WAVE_SPEED := 11.0        # m/s the wavefront expands
-const WAVE_THICKNESS := 1.9     # m — how wide the lit band is
-const WAVE_TAIL := 0.55         # how much glow lingers behind the front
-const MARK_SIZE := 0.16
-const ENEMY_MARK_SCALE := 4.0   # red contacts are drawn much larger
-const FADE_FULL := 8.0          # metres: closer than this = full strength
-const FADE_NONE := 34.0         # metres: beyond this = invisible
-const MAX_MARKS := 900
+const QUIET_FLOOR := 0.3
 
-## Live wavefronts. Each: {origin, born, strength, radius, marks},
-## where marks are {pos, normal, dist} — dist from the pulse origin,
-## which is what makes the wave sweep outward over the geometry.
-var _pulses_live: Array = []
+# --- the lidar --------------------------------------------------------
+## 4x the rays of the first version: a sweep should draw a room, not
+## sketch it.
+const SCAN_RAYS := 600
+const BLAST_RAYS := 320         # a gunshot lights everything at once
+## Memory, not a glimpse: a scanned room stays with you for minutes.
+const LIDAR_LIFETIME := 300.0   # 5 minutes
+const SOUND_LIFETIME := 22.0    # noises fade far sooner than the map
+## A fresh hit clears older LIDAR marks this close to it, so repeated
+## sweeps refresh the picture instead of stacking thousands of dots.
+const REPLACE_RADIUS := 0.35
+## Gaussian spread: rays cluster around where you are actually looking
+## and thin out toward the edge of the cone, so the middle of your
+## attention is drawn in far more detail.
+const CONE_SIGMA := 0.42        # fraction of the half-angle, 1 sigma
+
+const MARK_SIZE := 0.16
+const ENEMY_MARK_SCALE := 4.0
+const FADE_FULL := 8.0          # metres: closer than this = full strength
+const FADE_NONE := 34.0         # beyond this = inaudible
+const MAX_MARKS := 9000         # hard cap; oldest go first
+const REBUILD_INTERVAL := 0.08  # seconds between mesh rebuilds
+## Sound still travels (STO-CHARACTER-041): a mark stays dark until
+## the wavefront reaches it, so a noise ripples outward from wherever
+## it happened before settling into the picture and fading.
+const WAVE_SPEED := 11.0
+
+enum Kind { LIDAR, SOUND }
+
+## Every live mark: {pos, normal, born, kind, strength, enemy}
+var _marks: Array = []
+## pos snapped to a grid -> indices, so a fresh hit can find the old
+## marks it should replace without scanning the whole list.
+var _grid: Dictionary = {}
 var _mesh: ImmediateMesh
 var _mesh_node: MeshInstance3D
-var _cooldowns: Dictionary = {} # instance id -> seconds until next pulse
-var _last_pos: Dictionary = {}  # instance id -> last known position
-var _listener: Node3D           # the Sniper (distance fade reference)
+var _cooldowns: Dictionary = {}
+var _last_pos: Dictionary = {}
+var _listener: Node3D
 var _pulses := 0
+var _scans := 0
+var _rebuild_timer := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
@@ -86,19 +106,29 @@ func _ready() -> void:
 	mat.no_depth_test = true
 	_mesh_node.material_override = mat
 	add_child(_mesh_node)
+	if Engine.has_singleton("Sounds"):
+		pass
+	# Anything anyone does, anywhere, is a sound we might hear.
+	if has_node("/root/Sounds"):
+		get_node("/root/Sounds").sound_made.connect(_on_sound_made)
 
 
 func _physics_process(delta: float) -> void:
 	for key in _cooldowns.keys():
 		_cooldowns[key] = float(_cooldowns[key]) - delta
 	_scan_movers(delta)
-	_expire_marks()
-	_rebuild_mesh()
+	_expire()
+	_rebuild_timer += delta
+	if _rebuild_timer >= REBUILD_INTERVAL:
+		_rebuild_timer = 0.0
+		_rebuild_mesh()
 
 
-## Anything that moved this tick emits an echo: enemies, players
-## (including us — so the Sniper can feel out a silent room by
-## walking), ragdoll parts and loose physics objects.
+# ---------------------------------------------------------------------
+# Hearing
+# ---------------------------------------------------------------------
+
+## Anything that moved this tick makes footsteps.
 func _scan_movers(delta: float) -> void:
 	var movers: Array = []
 	movers.append_array(get_tree().get_nodes_in_group("enemies"))
@@ -123,11 +153,8 @@ func _scan_movers(delta: float) -> void:
 		emit_pulse(pos, speed, node)
 
 
-## Cast rays outward from `origin`; every MAP surface they hit gets a
-## mark. The mover itself, and all other creatures, are excluded — we
-## only ever outline the room, never what is in it.
+## A footstep-style noise: rays outward, marks on the ROOM only.
 func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
-	# How heavy is whatever made this sound?
 	var loud := _loudness_of(source)
 	var radius := clampf(
 			(PULSE_RADIUS_BASE + speed * PULSE_RADIUS_PER_SPEED) * loud,
@@ -135,45 +162,53 @@ func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
 	var strength := clampf(clampf(speed / 6.0, STRENGTH_FLOOR, 1.0) * loud,
 			QUIET_FLOOR, 1.0)
 	_pulses += 1
-	_cast_pulse(origin, radius, strength, source, RAYS_PER_PULSE)
+	_cast(origin, radius, strength, source, RAYS_PER_PULSE, Kind.SOUND,
+			false, Vector3.ZERO, 0.0)
 
 
-## A GUNSHOT (STO-CHARACTER-047): far louder than any footstep — one
-## wave that floods the whole area, with many more rays so the room
-## really is drawn rather than sketched. This is how a blind Sniper
-## sees: you shoot to look, and everything hears you do it.
+## Something HAPPENED here — a gunshot, a punch, a body hitting the
+## floor (STO-CHARACTER-050). Louder and wider than a footstep, and it
+## does not care who made it, so other players' actions show up too.
+func _on_sound_made(position: Vector3, loudness: float) -> void:
+	var radius := clampf(10.0 * loudness, 6.0, 60.0)
+	var rays := clampi(int(40.0 * loudness), 30, BLAST_RAYS)
+	_pulses += 1
+	_cast(position, radius, 1.0, null, rays, Kind.SOUND,
+			false, Vector3.ZERO, 0.0)
+
+
+## The gunshot: the whole room at once.
 func emit_blast(origin: Vector3, radius := 45.0) -> void:
 	_pulses += 1
-	_cast_pulse(origin, radius, 1.0, null, BLAST_RAYS)
+	_cast(origin, radius, 1.0, null, BLAST_RAYS, Kind.SOUND,
+			false, Vector3.ZERO, 0.0)
 
 
-## A LIDAR SCAN (STO-CHARACTER-048): a tight cone of rays swept in the
-## direction you are facing. Unlike a footstep's ripple, the points it
-## paints HOLD for a few seconds before fading, so a scan gives the
-## Sniper a steady picture of what is ahead instead of a glimpse.
+# ---------------------------------------------------------------------
+# Lidar
+# ---------------------------------------------------------------------
+
+## An aimed sweep. Dense, gaussian-clustered around where you look,
+## and remembered for minutes.
 func emit_scan(origin: Vector3, dir: Vector3, radius := 40.0,
-		half_angle_deg := 32.0, rays := 150, linger := 3.2) -> void:
-	_pulses += 1
-	# The lidar is an AIMED tool, so unlike passive hearing it also
-	# picks out creatures — they come back RED (STO-CHARACTER-049).
-	# Passive footstep echoes still only ever outline the room.
-	_cast_pulse(origin, radius, 1.0, null, rays, linger,
-			dir.normalized(), deg_to_rad(half_angle_deg), true)
+		half_angle_deg := 32.0, rays := SCAN_RAYS, _linger := 0.0) -> void:
+	_scans += 1
+	_cast(origin, radius, 1.0, null, rays, Kind.LIDAR,
+			true, dir.normalized(), deg_to_rad(half_angle_deg))
 
 
-func _cast_pulse(origin: Vector3, radius: float, strength: float,
-		source: Node3D, rays: int, linger := 0.0,
-		cone_axis := Vector3.ZERO, cone_angle := 0.0,
-		include_creatures := false) -> void:
+func _cast(origin: Vector3, radius: float, strength: float,
+		source: Node3D, rays: int, kind: int, include_creatures: bool,
+		cone_axis: Vector3, cone_angle: float) -> void:
 	var space := get_world_3d().direct_space_state
 	var exclude: Array = [] if include_creatures else _creature_rids(source)
-	var mask := WORLD_MASK
-	var marks: Array = []
+	var now := Time.get_ticks_msec()
+
 	for i in rays:
-		var dir := _cone_dir(i, rays, cone_axis, cone_angle) \
-				if cone_angle > 0.0 else _sphere_dir_of(i, rays)
+		var dir := _cone_dir(cone_axis, cone_angle) \
+				if cone_angle > 0.0 else _sphere_dir(i, rays)
 		var q := PhysicsRayQueryParameters3D.create(
-				origin, origin + dir * radius, mask)
+				origin, origin + dir * radius, WORLD_MASK)
 		q.exclude = exclude
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
@@ -182,36 +217,192 @@ func _cast_pulse(origin: Vector3, radius: float, strength: float,
 		var col = hit.get("collider")
 		var is_enemy := include_creatures and col != null \
 				and col is Node and (col as Node).is_in_group("enemies")
-		marks.append({
+		# A fresh lidar hit REPLACES the stale picture around it, so
+		# rescanning a room refreshes it rather than layering dots.
+		if kind == Kind.LIDAR:
+			_clear_near(pos, REPLACE_RADIUS)
+		_add_mark({
 			"pos": pos,
 			"normal": hit["normal"],
-			"dist": origin.distance_to(pos),
+			"born": now,
+			# The wave has to travel here before this spot lights up.
+			"delay": origin.distance_to(pos) / WAVE_SPEED,
+			"kind": kind,
+			"strength": strength,
 			"enemy": is_enemy,
 		})
-	if marks.is_empty():
+
+	if _marks.size() > MAX_MARKS:
+		_marks = _marks.slice(_marks.size() - MAX_MARKS)
+		_reindex()
+
+
+# ---------------------------------------------------------------------
+# Mark storage (a coarse spatial grid, so replacement stays cheap)
+# ---------------------------------------------------------------------
+
+const CELL := 0.5
+
+
+func _cell_of(p: Vector3) -> Vector3i:
+	return Vector3i(floori(p.x / CELL), floori(p.y / CELL), floori(p.z / CELL))
+
+
+func _add_mark(m: Dictionary) -> void:
+	_marks.append(m)
+	var c := _cell_of(m["pos"])
+	if not _grid.has(c):
+		_grid[c] = []
+	_grid[c].append(_marks.size() - 1)
+
+
+## Drop LIDAR marks within `radius` of `p` — the old reading of a spot
+## we have just re-measured.
+func _clear_near(p: Vector3, radius: float) -> void:
+	var c := _cell_of(p)
+	var r2 := radius * radius
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				var key := Vector3i(c.x + dx, c.y + dy, c.z + dz)
+				if not _grid.has(key):
+					continue
+				for idx in _grid[key]:
+					if idx >= _marks.size():
+						continue
+					var m: Dictionary = _marks[idx]
+					if m.get("dead", false) or int(m["kind"]) != Kind.LIDAR:
+						continue
+					if (m["pos"] as Vector3).distance_squared_to(p) <= r2:
+						m["dead"] = true
+
+
+func _reindex() -> void:
+	_grid.clear()
+	for i in _marks.size():
+		var c := _cell_of(_marks[i]["pos"])
+		if not _grid.has(c):
+			_grid[c] = []
+		_grid[c].append(i)
+
+
+func _expire() -> void:
+	var now := Time.get_ticks_msec()
+	var live: Array = []
+	for m in _marks:
+		if m.get("dead", false):
+			continue
+		var life: float = LIDAR_LIFETIME if int(m["kind"]) == Kind.LIDAR \
+				else SOUND_LIFETIME
+		if float(now - int(m["born"])) / 1000.0 - float(m.get("delay", 0.0)) < life:
+			live.append(m)
+	if live.size() != _marks.size():
+		_marks = live
+		_reindex()
+
+
+# ---------------------------------------------------------------------
+# Drawing
+# ---------------------------------------------------------------------
+
+## Colour for a mark of `kind` at age fraction `t` (0 fresh, 1 gone).
+##   lidar: white -> grey -> black
+##   sound: red   -> grey-red -> black-red
+func mark_colour(kind: int, t: float) -> Color:
+	var a := clampf(t, 0.0, 1.0)
+	if kind == Kind.LIDAR:
+		if a < 0.5:
+			return Color(1, 1, 1).lerp(Color(0.5, 0.5, 0.5), a / 0.5)
+		return Color(0.5, 0.5, 0.5).lerp(Color(0, 0, 0), (a - 0.5) / 0.5)
+	# Sound keeps a red bias the whole way down, so movement never
+	# looks like the remembered map.
+	if a < 0.5:
+		return Color(1.0, 0.15, 0.15).lerp(Color(0.55, 0.32, 0.32), a / 0.5)
+	return Color(0.55, 0.32, 0.32).lerp(Color(0.12, 0.0, 0.0), (a - 0.5) / 0.5)
+
+
+func _rebuild_mesh() -> void:
+	_mesh.clear_surfaces()
+	if _marks.is_empty():
 		return
-	_pulses_live.append({
-		"origin": origin,
-		"born": Time.get_ticks_msec(),
-		"strength": strength,
-		"radius": radius,
-		"marks": marks,
-		"linger": linger,
-	})
+	var now := Time.get_ticks_msec()
+	var ear := _listener.global_position if _listener != null else global_position
+	var began := false
+
+	for m in _marks:
+		var kind := int(m["kind"])
+		var life: float = LIDAR_LIFETIME if kind == Kind.LIDAR else SOUND_LIFETIME
+		# Nothing shows until the wavefront has arrived; then it ages.
+		var since := float(now - int(m["born"])) / 1000.0 - float(m.get("delay", 0.0))
+		if since < 0.0:
+			continue
+		var t := since / life
+		if t >= 1.0:
+			continue
+		var col := mark_colour(kind, t)
+		var alpha := float(m["strength"])
+		# Everything is fainter the further it is from the Sniper.
+		var d: float = ear.distance_to(m["pos"])
+		alpha *= 1.0 - clampf((d - FADE_FULL) / (FADE_NONE - FADE_FULL), 0.0, 1.0)
+		if alpha <= 0.02:
+			continue
+		if bool(m.get("enemy", false)):
+			col = Color(1.0, 0.22, 0.22)     # a contact stays vivid
+		col.a = alpha
+		if not began:
+			_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+			began = true
+		var size := MARK_SIZE * (ENEMY_MARK_SCALE
+				if bool(m.get("enemy", false)) else 1.0)
+		var n: Vector3 = m["normal"]
+		var t1 := n.cross(Vector3.UP)
+		if t1.length() < 0.01:
+			t1 = n.cross(Vector3.RIGHT)
+		t1 = t1.normalized() * size
+		var t2 := n.cross(t1).normalized() * size
+		var p: Vector3 = m["pos"] + n * 0.01
+		_mesh.surface_set_color(col)
+		_mesh.surface_add_vertex(p - t1)
+		_mesh.surface_add_vertex(p + t1)
+		_mesh.surface_set_color(col)
+		_mesh.surface_add_vertex(p - t2)
+		_mesh.surface_add_vertex(p + t2)
+	if began:
+		_mesh.surface_end()
 
 
-## How loud this mover is, from its build. Enemies expose a relative
-## mass from their procedural generation; players and everything else
-## count as average. NOTE: deliberately does NOT read RigidBody3D.mass
-## — that is in kilograms, a different scale entirely, and a 2 kg
-## crate would otherwise out-shout every enemy in the game.
+# ---------------------------------------------------------------------
+# Ray directions
+# ---------------------------------------------------------------------
+
+## A direction inside the cone, GAUSSIAN about the axis: dense where
+## you are looking, thinning toward the edge.
+func _cone_dir(axis: Vector3, half_angle: float) -> Vector3:
+	var theta := absf(_rng.randfn(0.0, half_angle * CONE_SIGMA))
+	theta = minf(theta, half_angle)
+	var azimuth := _rng.randf() * TAU
+	var up := Vector3.UP if absf(axis.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	var right := axis.cross(up).normalized()
+	var real_up := right.cross(axis).normalized()
+	return (axis * cos(theta)
+			+ right * (sin(theta) * cos(azimuth))
+			+ real_up * (sin(theta) * sin(azimuth))).normalized()
+
+
+func _sphere_dir(i: int, rays: int) -> Vector3:
+	var k := float(i) + _rng.randf()
+	var phi := acos(clampf(1.0 - 2.0 * k / float(rays), -1.0, 1.0))
+	var theta := PI * (1.0 + sqrt(5.0)) * k
+	return Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
+
+
 func _loudness_of(source: Node3D) -> float:
 	if source == null or not source.has_method("mass"):
 		return 1.0
 	return clampf(float(source.call("mass")), LOUDNESS_MIN, LOUDNESS_MAX)
 
 
-## Every creature's RID — echoes bounce off the room, not off people.
+## Echoes bounce off the room, not off people.
 func _creature_rids(_source: Node3D) -> Array:
 	var rids: Array = []
 	for group in ["enemies", "players"]:
@@ -221,203 +412,41 @@ func _creature_rids(_source: Node3D) -> Array:
 	return rids
 
 
-## Evenly-ish spread directions (spherical Fibonacci), jittered per
-## pulse so repeated pulses fill the room in rather than re-tracing
-## the same lines.
-## A direction inside a cone around `axis` — the lidar's sweep. Uses
-## the same spiral as the sphere version so coverage stays even.
-func _cone_dir(i: int, rays: int, axis: Vector3, half_angle: float) -> Vector3:
-	var k := (float(i) + _rng.randf()) / float(rays)
-	var cos_min := cos(half_angle)
-	var cz := lerpf(1.0, cos_min, k)          # spiral outward from centre
-	var sz := sqrt(maxf(0.0, 1.0 - cz * cz))
-	var theta := PI * (1.0 + sqrt(5.0)) * float(i)
-	var up := Vector3.UP if absf(axis.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
-	var right := axis.cross(up).normalized()
-	var real_up := right.cross(axis).normalized()
-	return (axis * cz + right * (sz * cos(theta))
-			+ real_up * (sz * sin(theta))).normalized()
-
-
-func _sphere_dir_of(i: int, rays: int) -> Vector3:
-	var k := float(i) + _rng.randf()
-	var phi := acos(clampf(1.0 - 2.0 * k / float(rays), -1.0, 1.0))
-	var theta := PI * (1.0 + sqrt(5.0)) * k
-	return Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
-
-
-## A pulse dies once its wavefront (plus the glow trailing behind it)
-## has swept past everything it could reach.
-func _expire_marks() -> void:
-	var now := Time.get_ticks_msec()
-	var live: Array = []
-	for p in _pulses_live:
-		var elapsed := float(now - int(p["born"])) / 1000.0
-		var front := elapsed * WAVE_SPEED
-		var lifetime: float = float(p.get("linger", 0.0))
-		if lifetime > 0.0:
-			# A lidar scan lives until its held points have faded out.
-			if elapsed <= float(p["radius"]) / WAVE_SPEED + lifetime + SCAN_FADE:
-				live.append(p)
-		elif front <= float(p["radius"]) \
-				+ WAVE_THICKNESS * (1.0 + WAVE_TAIL * 2.0):
-			live.append(p)
-	_pulses_live = live
-
-
-## Brightness of a surface at `dist` from the pulse origin when the
-## wavefront has reached `front`. Bright at the front, trailing off
-## behind it, dark ahead of it — and the whole wave weakens as it
-## spreads out (energy over a bigger and bigger shell).
-func _wave_brightness(dist: float, front: float, radius: float) -> float:
-	var delta := front - dist
-	if delta < 0.0:
-		# The wave hasn't arrived here yet — still dark.
-		var lead := -delta / (WAVE_THICKNESS * 0.35)
-		if lead > 1.0:
-			return 0.0
-		return 1.0 - lead
-	# Behind the front: a longer, softer tail.
-	var tail := delta / (WAVE_THICKNESS * (1.0 + WAVE_TAIL * 2.0))
-	if tail > 1.0:
-		return 0.0
-	var band := 1.0 - tail
-	# Spreading loss: the further the front has travelled, the weaker.
-	# Gentle enough that the outer edge of a walk's ripple still reads.
-	var spread := 1.0 - clampf(front / maxf(radius, 0.01), 0.0, 1.0) * 0.55
-	return band * spread
-
-
-## Lidar brightness: dark until the sweep reaches this point, then it
-## HOLDS at full while the scan lasts, then fades out. That is what
-## makes a scan a steady picture rather than a passing ripple.
-func _scan_brightness(dist: float, elapsed: float, linger: float) -> float:
-	var arrival := dist / WAVE_SPEED
-	var since := elapsed - arrival
-	if since < 0.0:
-		return 0.0                      # the sweep hasn't got here yet
-	if since < linger:
-		return 1.0                      # painted and holding
-	var fading := (since - linger) / SCAN_FADE
-	return clampf(1.0 - fading, 0.0, 1.0)
-
-
-func _rebuild_mesh() -> void:
-	_mesh.clear_surfaces()
-	if _pulses_live.is_empty():
-		return
-	var now := Time.get_ticks_msec()
-	var ear := _listener.global_position if _listener != null else global_position
-	var began := false
-
-	for p in _pulses_live:
-		var elapsed := float(now - int(p["born"])) / 1000.0
-		var front := elapsed * WAVE_SPEED
-		var strength := float(p["strength"])
-		var radius := float(p["radius"])
-		var linger: float = float(p.get("linger", 0.0))
-		for m in p["marks"]:
-			var alpha := (_scan_brightness(float(m["dist"]), elapsed, linger)
-					if linger > 0.0
-					else _wave_brightness(float(m["dist"]), front, radius)) * strength
-			if alpha <= 0.01:
-				continue
-			# Fainter with distance from the Sniper (operator decision).
-			var d: float = ear.distance_to(m["pos"])
-			alpha *= 1.0 - clampf((d - FADE_FULL) / (FADE_NONE - FADE_FULL),
-					0.0, 1.0)
-			if alpha <= 0.01:
-				continue
-			if not began:
-				_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
-				began = true
-			# Walls come back cold blue; a creature comes back RED, and
-			# a bit brighter so it stands out at a glance.
-			var col := Color(1.0, 0.22, 0.22, minf(alpha * 1.25, 1.0)) \
-					if bool(m.get("enemy", false)) \
-					else Color(0.55, 0.85, 1.0, alpha)
-			# A small cross lying ON the surface, so walls read as walls.
-			var n: Vector3 = m["normal"]
-			var t1 := n.cross(Vector3.UP)
-			if t1.length() < 0.01:
-				t1 = n.cross(Vector3.RIGHT)
-			# Creature hits are drawn much bigger: only a couple of rays
-			# land on a distant body, so a normal-sized mark would be an
-			# almost invisible speck (STO-CHARACTER-049).
-			var mark_size := MARK_SIZE * (ENEMY_MARK_SCALE
-					if bool(m.get("enemy", false)) else 1.0)
-			t1 = t1.normalized() * mark_size
-			var t2 := n.cross(t1).normalized() * mark_size
-			var pos: Vector3 = m["pos"] + n * 0.01
-			_mesh.surface_set_color(col)
-			_mesh.surface_add_vertex(pos - t1)
-			_mesh.surface_add_vertex(pos + t1)
-			_mesh.surface_set_color(col)
-			_mesh.surface_add_vertex(pos - t2)
-			_mesh.surface_add_vertex(pos + t2)
-	if began:
-		_mesh.surface_end()
-
-
 # --- test accessors ---------------------------------------------------
 
 func mark_count() -> int:
+	return _marks.size()
+
+func lidar_mark_count() -> int:
 	var n := 0
-	for p in _pulses_live:
-		n += p["marks"].size()
+	for m in _marks:
+		if int(m["kind"]) == Kind.LIDAR:
+			n += 1
+	return n
+
+func sound_mark_count() -> int:
+	var n := 0
+	for m in _marks:
+		if int(m["kind"]) == Kind.SOUND:
+			n += 1
+	return n
+
+func enemy_mark_count() -> int:
+	var n := 0
+	for m in _marks:
+		if bool(m.get("enemy", false)):
+			n += 1
 	return n
 
 func pulse_count() -> int:
 	return _pulses
 
-func live_wave_count() -> int:
-	return _pulses_live.size()
+func scan_count() -> int:
+	return _scans
 
-## Brightness of the most recent pulse (for tests).
-func last_pulse_strength() -> float:
-	if _pulses_live.is_empty():
-		return 0.0
-	return float(_pulses_live[_pulses_live.size() - 1]["strength"])
-
-
-## Reach of the most recent pulse, in metres (for tests).
-func last_pulse_radius() -> float:
-	if _pulses_live.is_empty():
-		return 0.0
-	return float(_pulses_live[_pulses_live.size() - 1]["radius"])
-
-
-## How many live marks are creature hits (red) vs room (blue).
-func enemy_mark_count() -> int:
-	var n := 0
-	for p in _pulses_live:
-		for m in p["marks"]:
-			if bool(m.get("enemy", false)):
-				n += 1
-	return n
-
-
-## Every live mark, flattened (for tests).
 func all_marks() -> Array:
-	var out: Array = []
-	for p in _pulses_live:
-		out.append_array(p["marks"])
-	return out
+	return _marks
 
-## Where each live wavefront has expanded to, in metres.
-func wave_fronts() -> Array:
-	var now := Time.get_ticks_msec()
-	var out: Array = []
-	for p in _pulses_live:
-		out.append(float(now - int(p["born"])) / 1000.0 * WAVE_SPEED)
-	return out
-
-## Brightness a surface `dist` from a wave's origin shows when the
-## front has reached `front` (for tests).
-func brightness_for(dist: float, front: float, radius := 10.0) -> float:
-	return _wave_brightness(dist, front, radius)
-
-## Strength a mark at `pos` would render with (0 = invisible).
 func alpha_at(pos: Vector3) -> float:
 	var ear := _listener.global_position if _listener != null else global_position
 	var d := ear.distance_to(pos)

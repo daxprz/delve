@@ -386,6 +386,8 @@ func fire_gun() -> void:
 	var echo := get_node_or_null("EchoVision")
 	if echo != null:
 		echo.call("emit_blast", from, GUN_BLAST_RADIUS)
+	# Everyone hears a gunshot, on every machine.
+	Sounds.make(from, Sounds.GUNSHOT)
 
 	if hit.is_empty():
 		DebugOverlay.log("player/abilities", self, "%s: gunshot (missed)", [name])
@@ -654,6 +656,7 @@ func _physics_process(delta: float) -> void:
 				_pounce_hit = false
 				_pounce_cd = POUNCE_COOLDOWN  # refunded if we connect
 				_wall_lock = WALL_JUMP_LOCK  # keep the launch through input
+				Sounds.make(global_position, Sounds.POUNCE)
 				DebugOverlay.log("player/abilities", self,
 						"%s: pounce (charge %.2f s, power %.0f%%)",
 						[name, _pounce_charge, t * 100.0])

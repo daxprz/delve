@@ -61,9 +61,9 @@ func _physics_process(_d: float) -> bool:
 			var lit := int(_echo.call("mark_count")) - _marks_before
 			_check(lit > 60,
 					"the gunshot floods the room with echo (%d new marks)" % lit)
-			_check(float(_echo.call("last_pulse_radius")) >= 10.0,
-					"the shot's echo reaches far (%.0f m)"
-					% float(_echo.call("last_pulse_radius")))
+			_check(int(_echo.call("sound_mark_count")) > 60,
+					"the shot's echo covers a lot of surface (%d marks)"
+					% int(_echo.call("sound_mark_count")))
 			# THE SHOT: 40 m away, still hits hard.
 			_check(_enemy.health() < _hp_before - 20.0,
 					"a hit at 40 m does serious damage (%.0f -> %.0f)"

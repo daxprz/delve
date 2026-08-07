@@ -622,6 +622,7 @@ func _ram_damage(delta: float) -> void:
 					_player.deal_damage(node, speed * RAM_DAMAGE_SCALE)
 				elif node.has_method("take_damage"):
 					node.call("take_damage", speed * RAM_DAMAGE_SCALE)
+				Sounds.make(center, Sounds.PUNCH)
 				if node.has_method("apply_knockback"):
 					# Knock them where the punch is AIMED (so an upward
 					# punch launches them), with the lift folded in;
