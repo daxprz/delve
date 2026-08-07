@@ -60,7 +60,21 @@ const ShockwaveScript := preload("res://scripts/shockwave.gd")
 const RAM_MIN_SPEED := 3.0          # need at least this much speed to hurt
 const RAM_DAMAGE_SCALE := 2.2       # enemy damage per m/s of momentum
 const RAM_HIT_RADIUS := 0.9         # how close the fist must get
-const RAM_KNOCKBACK := 0.35         # knockback per m/s of momentum
+## Punch knockback (STO-CHARACTER-045). A landed punch has to be able
+## to knock an enemy DOWN: the enemy ragdoll threshold is ~7.5 of
+## delivered dv, and the old `speed * 0.35` only ever reached ~1.75 at
+## a run, so punches could never do more than nudge. Now there is a
+## solid base hit plus a momentum bonus, so a slow ram staggers and a
+## fast one flattens them.
+const RAM_KNOCKBACK_BASE := 4.2     # landed-punch impulse regardless of speed
+const RAM_KNOCKBACK := 1.15         # extra knockback per m/s of momentum
+const RAM_KNOCKBACK_LIFT := 0.35    # how much of the hit goes upward
+## Hauling a grabbed enemy along (STO-CHARACTER-045): a limp body is
+## ~60 kg of jointed parts, so the box's gentle reel impulse could not
+## shift it. Steer the held part toward a carry point instead.
+const HOLD_DIST := 1.6              # how far in front the body is carried
+const HOLD_STIFFNESS := 11.0
+const HOLD_MAX_SPEED := 16.0
 const RAM_SHOCKWAVE_SPEED := 9.0    # momentum needed for a shockwave on a ram hit
 const RAM_COOLDOWN := 0.4           # per-enemy, so one ram = ~one hit
 
@@ -314,6 +328,26 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 		return
 	var shoulder := _shoulder_world(int(arm["side"]))
 	var body = arm["grabbed_body"]
+	var enemy = arm.get("grabbed_enemy")
+
+	# Holding a limp enemy: haul the whole body along by steering the
+	# held part toward a carry point in front of the shoulder. An
+	# impulse-based reel cannot move ~60 kg of jointed ragdoll.
+	if enemy != null and is_instance_valid(enemy) \
+			and body != null and is_instance_valid(body) and body is RigidBody3D:
+		var fwd: Vector3 = -_player.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
+		var carry: Vector3 = shoulder + fwd * HOLD_DIST
+		var to_carry: Vector3 = carry - (body as RigidBody3D).global_position
+		var v: Vector3 = to_carry * HOLD_STIFFNESS
+		if v.length() > HOLD_MAX_SPEED:
+			v = v.normalized() * HOLD_MAX_SPEED
+		(body as RigidBody3D).linear_velocity = v
+		# Hand stays stuck to whatever we're carrying.
+		arm["target"] = (body as RigidBody3D).global_position
+		return
+
 	if body != null and is_instance_valid(body) and body is RigidBody3D:
 		# Grabbed a movable body (the box): reel it toward the hand, and
 		# keep the visual hand stuck to it.
@@ -577,7 +611,9 @@ func _ram_damage(delta: float) -> void:
 				elif node.has_method("take_damage"):
 					node.call("take_damage", speed * RAM_DAMAGE_SCALE)
 				if node.has_method("apply_knockback"):
-					node.call("apply_knockback", dir * speed * RAM_KNOCKBACK)
+					var hit := (dir + Vector3.UP * RAM_KNOCKBACK_LIFT).normalized() \
+							* (RAM_KNOCKBACK_BASE + speed * RAM_KNOCKBACK)
+					node.call("apply_knockback", hit)
 				if speed >= RAM_SHOCKWAVE_SPEED:
 					_spawn_shockwave(center, speed)
 				_ram_cd[eid] = RAM_COOLDOWN

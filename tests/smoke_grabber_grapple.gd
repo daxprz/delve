@@ -19,6 +19,8 @@ var _enemy: CharacterBody3D
 var _anchor := Vector3(0, 2.0, -9.0)
 var _start_z := 0.0
 var _held_part: RigidBody3D
+var _drag_from := Vector3.ZERO
+var _player_from := Vector3.ZERO
 
 
 func _physics_process(_d: float) -> bool:
@@ -80,6 +82,23 @@ func _physics_process(_d: float) -> bool:
 			_held_part = _arms.call("grabbed_body", 0)
 			_check(_held_part is RigidBody3D,
 					"the arm holds a real ragdoll part (%s)" % str(_held_part))
+			_next("drag")
+		"drag":
+			# Walk away: the held body must COME WITH US, not stay put.
+			if _ticks == 1:
+				_drag_from = _enemy.global_position
+				_player_from = _player.global_position
+			_player.global_position += Vector3(0.12, 0, 0)   # ~7 m/s sideways
+			if _ticks < 60:
+				return false
+			var enemy_moved := _enemy.global_position.distance_to(_drag_from)
+			var player_moved := _player.global_position.distance_to(_player_from)
+			_check(enemy_moved > player_moved * 0.6,
+					"a held enemy is dragged along (moved %.1f m as player moved %.1f m)"
+					% [enemy_moved, player_moved])
+			_check(_enemy.global_position.distance_to(_player.global_position) < 4.0,
+					"the held enemy stays close to the player (%.1f m)"
+					% _enemy.global_position.distance_to(_player.global_position))
 			_next("stay_limp")
 		"stay_limp":
 			# A ragdoll normally gets up after ~2 s; a HELD one must not.
@@ -104,6 +123,26 @@ func _physics_process(_d: float) -> bool:
 					return _finish()
 				return false
 			_check(true, "a dropped enemy gets back up on its own")
+			# --- A landed PUNCH must knock an enemy down ---
+			_enemy.call("recover")
+			_enemy.global_position = _player.global_position + Vector3(0, 0, -1.5)
+			_player.set_physics_process(false)   # we drive the ram by hand
+			_arms.call("set_punch_mode", true)
+			_arms.call("set_extended", 0, true)
+			_next("punch")
+		"punch":
+			# Ram forward at a run: velocity is what the punch scales on.
+			_player.velocity = Vector3(0, 0, -6.0)
+			# Keep the enemy on the fist so contact is guaranteed.
+			var fist: Vector3 = _arms.call("hand_point", 0)
+			if not _enemy.is_downed():
+				_enemy.global_position = fist - Vector3(0, 0.8, 0)
+			if _ticks < 30:
+				return false
+			_check(_enemy.is_downed(),
+					"a landed punch ragdolls the enemy")
+			_check(_enemy.health() < 60.0,
+					"the punch also hurt it (hp %.0f)" % _enemy.health())
 			return _finish()
 	return false
 
