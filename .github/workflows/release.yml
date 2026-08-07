@@ -32,6 +32,14 @@ jobs:
             preset: Windows
             out: delve.exe
             dir: windows
+          # macOS exports as a .zip containing delve.app. It is
+          # UNSIGNED (signing needs an Apple developer account), so
+          # Gatekeeper will complain on first launch — the release
+          # notes tell people how to get past it.
+          - name: macOS
+            preset: macOS
+            out: delve.zip
+            dir: macos
 
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +81,13 @@ jobs:
         run: |
           cd "build/${{ matrix.dir }}"
           chmod +x delve.x86_64 2>/dev/null || true
-          zip -r "../../delve-${{ matrix.dir }}.zip" .
+          if [ "${{ matrix.dir }}" = "macos" ]; then
+            # Godot already produced a .zip of the .app — don't nest
+            # a zip inside a zip.
+            cp delve.zip "../../delve-macos.zip"
+          else
+            zip -r "../../delve-${{ matrix.dir }}.zip" .
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -106,3 +120,13 @@ jobs:
 
             Both players must be on the same network, or the host must
             forward UDP port **7777**.
+
+            ---
+
+            **On macOS**, the app is unsigned, so the first launch is
+            blocked. Either right-click `delve.app` → **Open** → **Open**,
+            or run this once in Terminal:
+
+            ```
+            xattr -cr /path/to/delve.app
+            ```
