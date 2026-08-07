@@ -45,24 +45,33 @@ func _physics_process(_d: float) -> bool:
 			if _echo == null:
 				return _finish()
 
-			# --- colour ramps (STO-CHARACTER-050) ---
-			var lf: Color = _echo.call("mark_colour", 0, 0.0)
-			var lm: Color = _echo.call("mark_colour", 0, 0.5)
-			var lo: Color = _echo.call("mark_colour", 0, 0.99)
-			_check(lf.r > 0.9 and lf.g > 0.9 and lf.b > 0.9,
-					"a fresh lidar mark is WHITE")
-			_check(lm.r > 0.4 and lm.r < 0.6,
-					"it passes through GREY (%.2f)" % lm.r)
-			_check(lo.r < 0.1, "and ends BLACK (%.2f)" % lo.r)
+			# --- palette: WHAT it is decides the hue, HOW OLD
+			# decides the shade (STO-CHARACTER-051) ---
+			var world_fresh: Color = _echo.call("mark_colour", 0, 0.0)
+			var world_old: Color = _echo.call("mark_colour", 0, 0.95)
+			_check(world_fresh.b > world_fresh.r and world_fresh.b > world_fresh.g,
+					"the room is BLUE (%.2f, %.2f, %.2f)"
+					% [world_fresh.r, world_fresh.g, world_fresh.b])
+			_check(world_old.b < world_fresh.b and world_old.b < 0.15,
+					"and darkens toward black with age (%.2f -> %.2f)"
+					% [world_fresh.b, world_old.b])
 
-			var sf: Color = _echo.call("mark_colour", 1, 0.0)
-			var sm: Color = _echo.call("mark_colour", 1, 0.5)
-			var so: Color = _echo.call("mark_colour", 1, 0.99)
-			_check(sf.r > 0.9 and sf.g < 0.3, "a fresh sound mark is RED")
-			_check(sm.r > sm.g and sm.g > 0.2,
-					"it passes through GREY-RED (%.2f, %.2f)" % [sm.r, sm.g])
-			_check(so.r > so.g and so.r < 0.3,
-					"and ends BLACK-RED (%.2f, %.2f)" % [so.r, so.g])
+			var enemy_fresh: Color = _echo.call("mark_colour", 1, 0.0)
+			_check(enemy_fresh.r > enemy_fresh.g and enemy_fresh.r > enemy_fresh.b,
+					"enemies are RED (%.2f, %.2f, %.2f)"
+					% [enemy_fresh.r, enemy_fresh.g, enemy_fresh.b])
+			_check(float(_echo.call("mark_colour", 1, 0.95).r) < enemy_fresh.r,
+					"enemy marks darken with age too")
+
+			var friend_fresh: Color = _echo.call("mark_colour", 2, 0.0)
+			_check(friend_fresh.g > friend_fresh.r and friend_fresh.g > friend_fresh.b,
+					"other players are GREEN (%.2f, %.2f, %.2f)"
+					% [friend_fresh.r, friend_fresh.g, friend_fresh.b])
+
+			# The three must be tellable apart at a glance.
+			_check(world_fresh.b > 0.5 and enemy_fresh.r > 0.5
+					and friend_fresh.g > 0.5,
+					"all three hues are vivid enough to distinguish")
 			_next("scan")
 		"scan":
 			if _ticks < 5:
@@ -136,6 +145,45 @@ func _physics_process(_d: float) -> bool:
 					% int(_echo.call("sound_mark_count")))
 			_check(int(_echo.call("lidar_mark_count")) == _sound_lidar_before,
 					"hearing something does not disturb the lidar map")
+			# Creatures must now be HIT by the rays, not just the wall
+			# behind them (STO-CHARACTER-051 reverses the earlier
+			# "only the room" rule).
+			var es: GDScript = load("res://scripts/enemy.gd")
+			_enemy = es.new()
+			_enemy.name = "Contact"
+			_enemy.position = Vector3(0, 1, -6.0)
+			root.add_child(_enemy)
+			_next("contact")
+		"contact":
+			if _ticks < 12:
+				return false      # let it enter the physics space
+			if _ticks == 12:
+				# Hold it still: marks record where it WAS, and a
+				# chasing enemy would walk away from its own dots.
+				_enemy.set_physics_process(false)
+				_echo.set("_marks", [])
+				_echo.call("_reindex")
+				_player.set("_scan_cd", 0.0)
+				_player.call("lidar_scan")
+				return false
+			if _ticks < 60:
+				return false
+			_check(int(_echo.call("target_mark_count", 1)) > 0,
+					"the enemy itself is marked red (%d hits)"
+					% int(_echo.call("target_mark_count", 1)))
+			_check(int(_echo.call("target_mark_count", 0)) > 0,
+					"the room is still marked blue alongside it (%d)"
+					% int(_echo.call("target_mark_count", 0)))
+			# Every red mark must actually be ON the creature.
+			var stray := 0
+			for m in _echo.call("all_marks"):
+				if int(m.get("target", 0)) != 1:
+					continue
+				var d: float = (m["pos"] as Vector3).distance_to(
+						_enemy.global_position + Vector3(0, 0.9, 0))
+				if d > 1.8:
+					stray += 1
+			_check(stray == 0, "every red mark is on the enemy (%d stray)" % stray)
 			return _finish()
 	return false
 

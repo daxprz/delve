@@ -37,6 +37,10 @@ cannot see?
 | # | Slug | Size | Notes |
 |---|------|------|-------|
 | 047 | gunshot | L | The rifle, and the bang that lights the room |
+| 048 | lidar | M | RMB scan that paints ahead and holds |
+| 049 | lidar-enemies | S | Enemies on the lidar (absorbed into 051) |
+| 050 | echo-memory | L | 5-minute memory, gaussian spread, sound bus |
+| 051 | echo-palette | M | Blue room / red enemies / green friends, dots |
 
 ## Aiming decision (operator, 2026-08-07)
 

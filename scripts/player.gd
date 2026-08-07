@@ -284,6 +284,18 @@ func _ready() -> void:
 		# Camera renders ONLY the echo layer: the world itself is
 		# never drawn, so the screen is black until something moves.
 		camera.cull_mask = EchoVisionScript.ECHO_LAYER
+		# Culling the world still left the SKY drawn behind it, so the
+		# Sniper's view was a bright empty backdrop rather than
+		# darkness. Give the camera its own pure-black environment
+		# (STO-CHARACTER-051).
+		var env := Environment.new()
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0, 0, 0)
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0, 0, 0)
+		env.ambient_light_energy = 0.0
+		env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+		camera.environment = env
 		var echo: Node3D = EchoVisionScript.new()
 		echo.name = "EchoVision"
 		add_child(echo)

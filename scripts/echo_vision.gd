@@ -71,6 +71,16 @@ const REBUILD_INTERVAL := 0.08  # seconds between mesh rebuilds
 const WAVE_SPEED := 11.0
 
 enum Kind { LIDAR, SOUND }
+## What a ray struck. The COLOUR says what it is; the shade says how
+## long ago you learned it (STO-CHARACTER-051).
+enum Target { WORLD, ENEMY, PLAYER }
+
+## Fresh colours. Everything fades toward black as it ages.
+const COLOUR_WORLD := Color(0.35, 0.62, 1.0)    # blue   — the room
+const COLOUR_ENEMY := Color(1.0, 0.22, 0.22)    # red    — a threat
+const COLOUR_PLAYER := Color(0.3, 1.0, 0.42)    # green  — a friend
+## Creatures are drawn bigger so a couple of ray hits still read.
+const CREATURE_DOT_SCALE := 2.6
 
 ## Every live mark: {pos, normal, born, kind, strength, enemy}
 var _marks: Array = []
@@ -104,6 +114,8 @@ func _ready() -> void:
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	mat.no_depth_test = true
+	mat.use_point_size = true
+	mat.point_size = 5.0
 	_mesh_node.material_override = mat
 	add_child(_mesh_node)
 	if Engine.has_singleton("Sounds"):
@@ -201,7 +213,13 @@ func _cast(origin: Vector3, radius: float, strength: float,
 		source: Node3D, rays: int, kind: int, include_creatures: bool,
 		cone_axis: Vector3, cone_angle: float) -> void:
 	var space := get_world_3d().direct_space_state
-	var exclude: Array = [] if include_creatures else _creature_rids(source)
+	# Creatures are now legitimate targets for BOTH lidar and sound
+	# (STO-CHARACTER-051): you want to see the enemy, not just the wall
+	# behind it. Only whatever MADE the noise is skipped, so a footstep
+	# does not simply paint its own owner.
+	var exclude: Array = []
+	if source != null and source is CollisionObject3D:
+		exclude.append((source as CollisionObject3D).get_rid())
 	var now := Time.get_ticks_msec()
 
 	for i in rays:
@@ -215,8 +233,12 @@ func _cast(origin: Vector3, radius: float, strength: float,
 			continue
 		var pos: Vector3 = hit["position"]
 		var col = hit.get("collider")
-		var is_enemy := include_creatures and col != null \
-				and col is Node and (col as Node).is_in_group("enemies")
+		var target := Target.WORLD
+		if col is Node:
+			if (col as Node).is_in_group("enemies"):
+				target = Target.ENEMY
+			elif (col as Node).is_in_group("players"):
+				target = Target.PLAYER
 		# A fresh lidar hit REPLACES the stale picture around it, so
 		# rescanning a room refreshes it rather than layering dots.
 		if kind == Kind.LIDAR:
@@ -229,7 +251,7 @@ func _cast(origin: Vector3, radius: float, strength: float,
 			"delay": origin.distance_to(pos) / WAVE_SPEED,
 			"kind": kind,
 			"strength": strength,
-			"enemy": is_enemy,
+			"target": target,
 		})
 
 	if _marks.size() > MAX_MARKS:
@@ -305,20 +327,22 @@ func _expire() -> void:
 # Drawing
 # ---------------------------------------------------------------------
 
-## Colour for a mark of `kind` at age fraction `t` (0 fresh, 1 gone).
-##   lidar: white -> grey -> black
-##   sound: red   -> grey-red -> black-red
-func mark_colour(kind: int, t: float) -> Color:
+## Colour for a mark: WHAT it is decides the hue, HOW OLD it is
+## decides the shade (STO-CHARACTER-051).
+##   world  -> shades of blue
+##   enemy  -> shades of red
+##   friend -> shades of green
+## Everything darkens toward black as it ages and then disappears.
+func mark_colour(target: int, t: float) -> Color:
 	var a := clampf(t, 0.0, 1.0)
-	if kind == Kind.LIDAR:
-		if a < 0.5:
-			return Color(1, 1, 1).lerp(Color(0.5, 0.5, 0.5), a / 0.5)
-		return Color(0.5, 0.5, 0.5).lerp(Color(0, 0, 0), (a - 0.5) / 0.5)
-	# Sound keeps a red bias the whole way down, so movement never
-	# looks like the remembered map.
-	if a < 0.5:
-		return Color(1.0, 0.15, 0.15).lerp(Color(0.55, 0.32, 0.32), a / 0.5)
-	return Color(0.55, 0.32, 0.32).lerp(Color(0.12, 0.0, 0.0), (a - 0.5) / 0.5)
+	var base := COLOUR_WORLD
+	if target == Target.ENEMY:
+		base = COLOUR_ENEMY
+	elif target == Target.PLAYER:
+		base = COLOUR_PLAYER
+	# Ease the darkening so a mark holds its colour for most of its
+	# life and then drops away, rather than greying out immediately.
+	return base.lerp(Color(0, 0, 0), a * a)
 
 
 func _rebuild_mesh() -> void:
@@ -339,34 +363,23 @@ func _rebuild_mesh() -> void:
 		var t := since / life
 		if t >= 1.0:
 			continue
-		var col := mark_colour(kind, t)
+		var col := mark_colour(int(m.get("target", Target.WORLD)), t)
 		var alpha := float(m["strength"])
 		# Everything is fainter the further it is from the Sniper.
 		var d: float = ear.distance_to(m["pos"])
 		alpha *= 1.0 - clampf((d - FADE_FULL) / (FADE_NONE - FADE_FULL), 0.0, 1.0)
 		if alpha <= 0.02:
 			continue
-		if bool(m.get("enemy", false)):
-			col = Color(1.0, 0.22, 0.22)     # a contact stays vivid
 		col.a = alpha
 		if not began:
-			_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+			# Simple DOTS rather than little crosses: at 600 rays a
+			# sweep the crosses smeared into a mesh, while points read
+			# as a proper point-cloud of the room.
+			_mesh.surface_begin(Mesh.PRIMITIVE_POINTS)
 			began = true
-		var size := MARK_SIZE * (ENEMY_MARK_SCALE
-				if bool(m.get("enemy", false)) else 1.0)
 		var n: Vector3 = m["normal"]
-		var t1 := n.cross(Vector3.UP)
-		if t1.length() < 0.01:
-			t1 = n.cross(Vector3.RIGHT)
-		t1 = t1.normalized() * size
-		var t2 := n.cross(t1).normalized() * size
-		var p: Vector3 = m["pos"] + n * 0.01
 		_mesh.surface_set_color(col)
-		_mesh.surface_add_vertex(p - t1)
-		_mesh.surface_add_vertex(p + t1)
-		_mesh.surface_set_color(col)
-		_mesh.surface_add_vertex(p - t2)
-		_mesh.surface_add_vertex(p + t2)
+		_mesh.surface_add_vertex(m["pos"] + n * 0.01)
 	if began:
 		_mesh.surface_end()
 
@@ -432,9 +445,13 @@ func sound_mark_count() -> int:
 	return n
 
 func enemy_mark_count() -> int:
+	return target_mark_count(Target.ENEMY)
+
+
+func target_mark_count(target: int) -> int:
 	var n := 0
 	for m in _marks:
-		if bool(m.get("enemy", false)):
+		if int(m.get("target", Target.WORLD)) == target:
 			n += 1
 	return n
 

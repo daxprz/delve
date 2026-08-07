@@ -50,6 +50,13 @@ room immediately around itself by moving.
 - Sound/audio (this is the VISUAL representation of hearing).
 - Echo-sight for any other character.
 
+> **PARTLY SUPERSEDED by STO-CHARACTER-051 (2026-08-07).** The
+> "only the walls, never the creature" rule below was reversed after
+> play: creatures are now marked directly, in their own colours
+> (enemies red, other players green, the room blue). The original
+> reasoning is kept here rather than rewritten, so the design history
+> still reads honestly.
+
 ## Decisions (operator, 2026-08-07)
 
 - **Only the walls around a mover are outlined — never the mover
