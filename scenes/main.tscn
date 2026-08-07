@@ -54,6 +54,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 _spawnable_scenes = PackedStringArray("res://scenes/player.tscn")
 spawn_path = NodePath("../Players")
 
+[node name="Enemies" type="Node3D" parent="."]
+
+[node name="EnemySpawner" type="MultiplayerSpawner" parent="."]
+_spawnable_scenes = PackedStringArray("res://scenes/enemy.tscn")
+spawn_path = NodePath("../Enemies")
+
 [node name="Menu" type="CanvasLayer" parent="." unique_id=2125788516]
 
 [node name="UI" type="Control" parent="Menu" unique_id=692952626]

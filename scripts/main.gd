@@ -8,6 +8,7 @@ const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PlaygroundScript := preload("res://scripts/playground.gd")
 const ProcMapScript := preload("res://scripts/procmap.gd")
 const EnemyScript := preload("res://scripts/enemy.gd")
+const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const MirrorScript := preload("res://scripts/mirror.gd")
 const CharacterDB := preload("res://scripts/characters.gd")
 
@@ -32,6 +33,7 @@ var _char_buttons: Array = []
 var _in_game := false
 var _pause_menu: CanvasLayer
 var _address_edit: LineEdit
+var _map_seed := 0
 var _server_list: VBoxContainer
 
 
@@ -54,11 +56,7 @@ func _ready() -> void:
 
 	# A procedurally-generated maze map, in its OWN area away from the
 	# playground/testing (STO-WORLD-004). Random layout each run.
-	var procmap: Node3D = ProcMapScript.new()
-	procmap.name = "ProcMap"
-	procmap.set("map_seed", randi())  # different each play
-	procmap.position = Vector3(22.0, 0.0, -15.0)
-	add_child(procmap)
+	_build_procmap(randi())  # a different maze each play, until we join
 
 	# Spawn the follower enemies (EPI-ENEMIES-BASIC-ENEMY).
 	_spawn_enemies()
@@ -125,15 +123,61 @@ func _update_character_buttons() -> void:
 		btn.button_pressed = (i == CharacterDB.selected_index)
 
 
+## Enemies belong to the SERVER (STO-CORE-005). They are instanced
+## from a scene and added under the EnemySpawner's path, so the
+## spawner replicates them to every peer — including anyone who joins
+## later. Each enemy carries a MultiplayerSynchronizer for its
+## position and rotation.
+##
+## They used to be built from a script in _ready on EVERY instance,
+## which meant each machine had its own private set: only the server
+## ran their AI, so a client's copies stood frozen somewhere else
+## entirely. Nothing about them agreed.
 func _spawn_enemies() -> void:
-	var root := Node3D.new()
-	root.name = "Enemies"
-	add_child(root)
+	var container := $Enemies
+	for c in container.get_children():
+		c.queue_free()
 	for i in ENEMY_SPAWNS.size():
-		var enemy: CharacterBody3D = EnemyScript.new()
+		var enemy: CharacterBody3D = ENEMY_SCENE.instantiate()
 		enemy.name = "Enemy%d" % i
 		enemy.position = ENEMY_SPAWNS[i]
-		root.add_child(enemy)
+		container.add_child(enemy, true)
+
+
+## Drop anything we built locally before joining — the server's copies
+## are about to arrive and we must not have doubles.
+func _clear_local_world() -> void:
+	for c in $Enemies.get_children():
+		c.queue_free()
+
+
+## Build (or rebuild) the procedural maze from a specific seed.
+## The seed decides the whole layout, so everyone must use the SAME
+## one — otherwise players walk through walls their friend can see
+## (STO-CORE-006).
+func _build_procmap(seed_value: int) -> void:
+	_map_seed = seed_value
+	var existing := get_node_or_null("ProcMap")
+	if existing != null:
+		existing.name = "ProcMapOld"   # freeing is deferred; free the name now
+		existing.queue_free()
+	var procmap: Node3D = ProcMapScript.new()
+	procmap.name = "ProcMap"
+	procmap.set("map_seed", seed_value)
+	procmap.position = Vector3(22.0, 0.0, -15.0)
+	add_child(procmap)
+
+
+func map_seed() -> int:
+	return _map_seed
+
+
+## Sent by the server to each peer as it joins, so the client throws
+## away the maze it generated on its own and builds the server's.
+@rpc("authority", "call_remote", "reliable")
+func _receive_map_seed(seed_value: int) -> void:
+	if seed_value != _map_seed:
+		_build_procmap(seed_value)
 
 
 ## Pause menu (STO-CHARACTER-017): ESC pauses and shows Resume / Main Menu.
@@ -299,6 +343,9 @@ func join_game(capture_mouse := false) -> void:
 	# Remember where we played so it's one click next time.
 	Network.remember_server(addr)
 	refresh_server_list()
+	# The server owns the world: bin the enemies and maze we made on
+	# our own, and wait for its versions (STO-CORE-005/006).
+	_clear_local_world()
 	menu.hide()
 	_in_game = true
 	if capture_mouse:
@@ -307,6 +354,9 @@ func join_game(capture_mouse := false) -> void:
 
 func _on_peer_connected(id: int) -> void:
 	if multiplayer.is_server():
+		# Send our map seed first, so the joiner is standing in the
+		# same maze before their player appears in it.
+		_receive_map_seed.rpc_id(id, _map_seed)
 		_spawn_player(id)
 
 
