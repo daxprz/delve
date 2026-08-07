@@ -191,6 +191,26 @@ func _enter_tree() -> void:
 		set_multiplayer_authority(name.to_int())
 
 
+## Find whoever can tell us our spawn slot, by walking up our own
+## ancestors (Players -> the main scene).
+##
+## This used to ask get_tree().current_scene, which is null whenever
+## the main scene was instantiated by hand rather than loaded as THE
+## scene — every headless test does exactly that. The placement then
+## did nothing at all, and the player was left wherever it started
+## while the network raced to deliver a position (STO-CORE-007).
+func _find_spawn_owner() -> Node:
+	var n: Node = get_parent()
+	while n != null:
+		if n.has_method("spawn_position_for_peer"):
+			return n
+		n = n.get_parent()
+	var scene := get_tree().current_scene
+	if scene != null and scene.has_method("spawn_position_for_peer"):
+		return scene
+	return null
+
+
 func _ready() -> void:
 	# Enemies look players up by group.
 	add_to_group("players")
@@ -220,9 +240,15 @@ func _ready() -> void:
 	# derive the same slot from the peer id, so this agrees with the
 	# host rather than fighting it.
 	if is_multiplayer_authority() and name.is_valid_int():
-		var scene := get_tree().current_scene
-		if scene != null and scene.has_method("spawn_position_for_peer"):
+		var scene := _find_spawn_owner()
+		if scene != null:
 			position = scene.call("spawn_position_for_peer", name.to_int())
+		else:
+			# Silence here is what made STO-CORE-007 hide for so long:
+			# the placement was skipped and the player was left at
+			# whatever position it happened to have, with no complaint.
+			push_warning("player %s: no spawn owner found, staying at %v"
+					% [name, position])
 
 	# Only the owning peer looks through this player's camera.
 	camera.current = is_multiplayer_authority()

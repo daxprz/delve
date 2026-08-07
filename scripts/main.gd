@@ -40,21 +40,28 @@ var _server_list: VBoxContainer
 var _in_lobby := false
 var _started := false
 var _lobby_chars: Dictionary = {}     # peer id -> character index
+var _lobby_names: Dictionary = {}     # peer id -> player name (STO-UI-006)
 var _lobby_ui: CanvasLayer
 var _lobby_list: VBoxContainer
 var _start_button: Button
+var _name_edits: Array = []           # every name box, kept in step
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS  # so ESC works while paused
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	# The one moment a client KNOWS the host is listening. Announcing
+	# from join_game() alone is a race: the RPC can be sent before the
+	# connection exists and simply vanish (STO-UI-006).
+	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	_build_character_select()
 	_build_pause_menu()
 	# bind(true): a button click guarantees the pointer is inside the
 	# window, so capturing immediately is Wayland-safe (STO-UI-002).
 	$Menu/UI/VBox/HostButton.pressed.connect(host_game.bind(true))
 	$Menu/UI/VBox/JoinButton.pressed.connect(join_game.bind(true))
+	_build_name_field($Menu/UI/VBox, 0)   # first thing you see
 	_build_address_field()
 	_build_ui_scale_row($Menu/UI/VBox)
 	_build_lobby()
@@ -143,6 +150,62 @@ func _spawn_enemies() -> void:
 ## menu and the pause menu, because if the UI is too small to read you
 ## need to be able to fix it from wherever you are — including after
 ## you have already started playing.
+## A "Your name:" box (STO-UI-006). Built into both the main menu and
+## the lobby, so a typo can be fixed without leaving the game. Every
+## box is registered in `_name_edits` and refreshed together, so the
+## two never disagree about who you are.
+func _build_name_field(parent: Control, at_index := -1) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "NameRow"
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 8)
+
+	var label := Label.new()
+	label.text = "Your name:"
+	row.add_child(label)
+
+	var edit := LineEdit.new()
+	edit.name = "NameEdit"
+	edit.text = Settings.player_name
+	edit.placeholder_text = "who are you?"
+	edit.max_length = Settings.MAX_NAME_LENGTH
+	edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	edit.custom_minimum_size = Vector2(220, 34)
+	row.add_child(edit)
+	_name_edits.append(edit)
+
+	# Saved as you type: a name typed and then forgotten about is the
+	# common case, and there is no OK button to press.
+	edit.text_changed.connect(_set_player_name)
+	edit.text_submitted.connect(func(t: String) -> void:
+		_set_player_name(t)
+		edit.release_focus())
+
+	Settings.player_name_changed.connect(func(n: String) -> void:
+		# Don't fight the box being typed into — only correct the others.
+		if is_instance_valid(edit) and not edit.has_focus() and edit.text != n:
+			edit.text = n)
+
+	parent.add_child(row)
+	if at_index >= 0:
+		parent.move_child(row, at_index)
+	return row
+
+
+## Set our name and make sure everyone else learns it.
+func _set_player_name(value: String) -> void:
+	Settings.set_player_name(value)
+	if multiplayer.multiplayer_peer == null \
+			or multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
+		return
+	var me := multiplayer.get_unique_id()
+	_lobby_names[me] = Settings.player_name
+	if multiplayer.is_server():
+		_broadcast_lobby()
+	else:
+		_announce_name.rpc_id(1, Settings.player_name)
+
+
 func _build_ui_scale_row(parent: Control) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "UIScaleRow"
@@ -304,6 +367,7 @@ func host_game(capture_mouse := false) -> void:
 		return
 	menu.hide()
 	_lobby_chars = {1: CharacterDB.selected_index}
+	_lobby_names = {1: Settings.player_name}
 	_open_lobby(true)
 	if capture_mouse:
 		_set_mouse_locked(false)   # the lobby needs the cursor
@@ -392,9 +456,10 @@ func join_game(capture_mouse := false) -> void:
 	_open_lobby(false)
 	if capture_mouse:
 		_set_mouse_locked(false)   # the lobby needs the cursor
-	# Tell the host who we are playing as (it may not be connected
-	# yet, so also re-announced on connection below).
-	_announce_character.rpc_id(1, CharacterDB.selected_index)
+	# Who we are and what we picked is announced from
+	# _on_connected_to_server, NOT here: at this point the peer is
+	# still dialling, and an RPC sent now is thrown away with
+	# "multiplayer peer which is not connected".
 
 
 func _on_peer_connected(id: int) -> void:
@@ -413,7 +478,16 @@ func _on_peer_connected(id: int) -> void:
 	else:
 		if not _lobby_chars.has(id):
 			_lobby_chars[id] = 0
+		if not _lobby_names.has(id):
+			_lobby_names[id] = ""   # until they tell us; shown as a stand-in
 		_broadcast_lobby()
+
+
+## A client has reached the host. This — not join_game() — is the
+## moment it is safe to say who we are (STO-UI-006).
+func _on_connected_to_server() -> void:
+	_announce_name.rpc_id(1, Settings.player_name)
+	_announce_character.rpc_id(1, CharacterDB.selected_index)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -421,6 +495,9 @@ func _on_peer_disconnected(id: int) -> void:
 		var player := players.get_node_or_null(str(id))
 		if player != null:
 			player.queue_free()
+		_lobby_chars.erase(id)
+		_lobby_names.erase(id)
+		_broadcast_lobby()
 
 
 func _spawn_player(id: int) -> void:
@@ -522,6 +599,8 @@ func _build_lobby() -> void:
 	vbox.add_child(_lobby_list)
 
 	vbox.add_child(HSeparator.new())
+
+	_build_name_field(vbox)
 
 	var pick := Label.new()
 	pick.text = "Your character:"
@@ -660,16 +739,28 @@ func _announce_character(index: int) -> void:
 	_broadcast_lobby()
 
 
+## A client telling the host what to call it (STO-UI-006).
+@rpc("any_peer", "call_remote", "reliable")
+func _announce_name(value: String) -> void:
+	if not multiplayer.is_server():
+		return
+	# Cleaned again on arrival — see Settings.clean_name. Never trust
+	# the machine at the other end to have behaved.
+	_lobby_names[multiplayer.get_remote_sender_id()] = Settings.clean_name(value)
+	_broadcast_lobby()
+
+
 func _broadcast_lobby() -> void:
 	if not multiplayer.is_server():
 		return
-	_sync_lobby.rpc(_lobby_chars)
+	_sync_lobby.rpc(_lobby_chars, _lobby_names)
 	_refresh_lobby()
 
 
 @rpc("authority", "call_remote", "reliable")
-func _sync_lobby(chars: Dictionary) -> void:
+func _sync_lobby(chars: Dictionary, names: Dictionary) -> void:
 	_lobby_chars = chars.duplicate()
+	_lobby_names = names.duplicate()
 	_refresh_lobby()
 
 
@@ -684,10 +775,14 @@ func _refresh_lobby() -> void:
 		me = multiplayer.get_unique_id()
 	var ids := _lobby_chars.keys()
 	ids.sort()
-	for id in ids:
+	for i in ids.size():
+		var id: int = int(ids[i])
 		var label := Label.new()
-		var who := "Host" if int(id) == 1 else "Player %d" % int(id)
-		if int(id) == me:
+		# Their chosen name, or a readable stand-in — never a peer id
+		# like 1477304918, and never a blank row (STO-UI-006).
+		var who := Settings.display_name(
+				str(_lobby_names.get(id, "")), id, i + 1)
+		if id == me:
 			who += " (you)"
 		label.text = "%s — %s" % [who,
 				str(CharacterDB.get_def(int(_lobby_chars[id]))["name"])]
@@ -698,6 +793,21 @@ func _refresh_lobby() -> void:
 ## Who is in the lobby and what they picked (for tests).
 func lobby_players() -> Dictionary:
 	return _lobby_chars
+
+
+## Peer id -> name, as this machine currently understands it. Used by
+## the two-instance test to prove each side sees the OTHER's name.
+func lobby_names() -> Dictionary:
+	return _lobby_names
+
+
+## What this machine would print for a peer, stand-in included.
+func lobby_display_name(peer_id: int) -> String:
+	var ids := _lobby_chars.keys()
+	ids.sort()
+	var ordinal := ids.find(peer_id) + 1
+	return Settings.display_name(str(_lobby_names.get(peer_id, "")),
+			peer_id, maxi(ordinal, 1))
 
 
 func in_lobby() -> bool:

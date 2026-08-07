@@ -23,9 +23,10 @@ godot --path .            # play
 godot --editor --path .   # open in the editor
 ```
 
-Then pick a character and press **Host**. To play together, launch a
-second instance and press **Join** (localhost). You can also skip the
-menu:
+Type your name, pick a character and press **Host**. To play together,
+launch a second instance and press **Join** (localhost). Your name is
+remembered between sessions, so you only type it once. You can also
+skip the menu:
 
 ```bash
 godot --path . -- --server     # window 1
@@ -153,6 +154,35 @@ box — it has caught that exact regression twice.
 
 ---
 
+## How a build is bundled
+
+Pushing a tag `v*` runs `.github/workflows/release.yml`, which on a
+clean Ubuntu runner:
+
+1. installs **Godot 4.6.3** and its export templates;
+2. imports the project (building the `.godot` cache);
+3. exports each platform from `export_presets.cfg`;
+4. checks each export actually produced a non-empty file — Godot can
+   print an error, produce nothing, and still exit `0`;
+5. zips each one, writes `manifest.json` describing them all, and
+   publishes the lot as a GitHub Release.
+
+**What is inside each archive**
+
+| platform | contents | notes |
+|---|---|---|
+| `delve-linux.zip` | `delve.x86_64` + `delve.pck` | the `.pck` holds the game data and **must stay beside** the binary |
+| `delve-windows.zip` | `delve.exe` + `delve.pck` | same pairing |
+| `delve-macos.zip` | `Delve.app/` | a self-contained bundle; universal (Apple Silicon + Intel) |
+
+The presets exclude everything that is not the game — `effort/`,
+`tests/`, `ai/`, `.ccc/` and the Beads database — so a download is
+just what you play.
+
+Nothing about a build depends on the machine that made it: the same
+tag produces the same bundle anywhere, which is what makes automatic
+deployment safe.
+
 ## Deployment bundle
 
 Every tagged build publishes a **bundle**: the platform archives plus a
@@ -215,18 +245,78 @@ delve -- --server          # host immediately, skipping the lobby
 delve -- --client 10.0.0.5 # join that address immediately
 ```
 
-**Per-platform notes**
+### Installing on each operating system
 
-- **Linux** — `delve.x86_64` needs the executable bit; zip does not
-  always preserve it, so `chmod +x` after unpacking.
-- **macOS** — the app is **unsigned**. Gatekeeper blocks the first
-  launch unless the quarantine flag is cleared:
-  `xattr -cr /path/to/Delve.app`. An installer should do this itself.
-- **Windows** — SmartScreen may warn on first run for the same reason.
+What an automated installer has to do differs per platform. These are
+the steps that are easy to miss and that will otherwise fail silently
+on someone else's machine.
 
-Settings and saved servers live in the user data directory
-(`~/.local/share/godot/app_userdata/Delve` on Linux), **not** in the
-install directory, so replacing a version does not lose them.
+**Linux**
+
+```bash
+unzip -o delve-linux.zip -d /opt/delve/0.1.7
+chmod +x /opt/delve/0.1.7/delve.x86_64      # zip does not preserve this
+ln -sfn /opt/delve/0.1.7 /opt/delve/current
+/opt/delve/current/delve.x86_64
+```
+
+- Keep `delve.pck` beside the binary; the game will not start without it.
+- Needs a GPU with Vulkan. On a headless or software-only box, run with
+  `--rendering-driver opengl3`, or `--headless` for a dedicated host.
+- Allow the game port if a firewall is on:
+  `sudo ufw allow 7777/udp`
+
+**macOS**
+
+```bash
+unzip -o delve-macos.zip -d /Applications/delve/0.1.7
+xattr -cr /Applications/delve/0.1.7/Delve.app   # REQUIRED, see below
+open /Applications/delve/0.1.7/Delve.app
+```
+
+- The app is **unsigned and not notarised**. Downloading it sets a
+  quarantine flag, and macOS will refuse to open it with a message
+  suggesting the app is damaged. Clearing the flag with `xattr -cr` is
+  what an installer must do; a human alternative is right-click →
+  **Open** → **Open**.
+- Do not repackage the `.app` with a tool that drops symlinks or the
+  executable bit — copy it as a directory tree, or keep it zipped
+  until install.
+- The first run may prompt to allow incoming network connections.
+  Pre-approving it needs an admin-installed firewall rule:
+  `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /Applications/delve/current/Delve.app`
+
+**Windows**
+
+```powershell
+Expand-Archive -Force delve-windows.zip C:\delve\0.1.7
+# Zone.Identifier marks downloaded files; clear it or SmartScreen nags
+Get-ChildItem -Recurse C:\delve\0.1.7 | Unblock-File
+C:\delve\0.1.7\delve.exe
+```
+
+- Keep `delve.pck` beside `delve.exe`.
+- The binary is unsigned, so **SmartScreen** may warn on first run.
+  `Unblock-File` removes the mark-of-the-web that triggers it.
+- Windows Firewall will prompt on first host. To pre-approve:
+  `New-NetFirewallRule -DisplayName "delve" -Direction Inbound -Protocol UDP -LocalPort 7777 -Action Allow`
+
+### Things that apply everywhere
+
+- **Install into a versioned directory and switch a pointer.** Never
+  unpack over a running install; a half-finished download must not be
+  able to replace something that works.
+- **Player data is not in the install directory.** Settings, UI scale
+  and saved servers live in the user data directory
+  (`~/.local/share/godot/app_userdata/Delve` on Linux,
+  `~/Library/Application Support/Godot/app_userdata/Delve` on macOS,
+  `%APPDATA%\Godot\app_userdata\Delve` on Windows), so upgrading
+  never loses them — and uninstalling will not clean them up.
+- **UDP 7777 inbound** is needed only on the machine that **hosts**.
+  Clients need no rule.
+- **Everyone must run the same version.** There is no protocol
+  version check yet: a mismatched client will connect and then behave
+  strangely rather than refuse. Roll every machine forward together.
 
 ## Layout
 

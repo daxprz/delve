@@ -48,10 +48,27 @@ func _physics_process(_delta: float) -> bool:
 						_pass("host player visible at Players/1")
 					else:
 						_fail("host player NOT visible at Players/1")
-					_start_z = _me.position.z
-					Input.action_press("move_forward")
 					_phase_ticks = 0
-					_phase = "move"
+					_phase = "settle"
+		"settle":
+			# A replicated node exists BEFORE its position arrives: it
+			# sits at the scene origin until the server's first
+			# synchronizer update lands. Reading _start_z straight away
+			# measured from (0,0,0) and made "walked forward" look like
+			# "walked backward" — a real race that flaked roughly one
+			# run in four once connect-time traffic changed the timing.
+			_phase_ticks += 1
+			if not is_instance_valid(_me):
+				_fail("own player was freed before it settled")
+				return _finish()
+			if _me.position.length() > 0.5 and _phase_ticks >= 15:
+				_start_z = _me.position.z
+				Input.action_press("move_forward")
+				_phase_ticks = 0
+				_phase = "move"
+			elif _phase_ticks > 240:
+				_fail("player never received a spawn position (still at origin)")
+				return _finish()
 		"move":
 			_phase_ticks += 1
 			if not is_instance_valid(_me):

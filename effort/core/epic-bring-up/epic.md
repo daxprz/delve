@@ -6,7 +6,7 @@ effort: core
 status: shipped
 date: 2026-08-03
 bd-id: delve-49c
-shipped: 2026-08-03
+shipped: 2026-08-07
 ---
 
 # Bring-up: minimal playable 3D first-person multiplayer
