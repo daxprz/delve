@@ -192,6 +192,35 @@ func _ready() -> void:
 	# Enemies look players up by group.
 	add_to_group("players")
 
+	# Players never collide with each other (STO-CORE-004).
+	#
+	# This is the real fix for the infinite-launch bug, not the spawn
+	# spreading. A remote player's position comes from the network
+	# sync, so it cannot be pushed aside; when two capsules overlap,
+	# each instance shoves its OWN player upward to escape, syncs the
+	# higher position, and shoves the other higher again. Both climb
+	# forever. Spreading spawns only avoids the usual trigger —
+	# walking into each other would set it off just the same.
+	#
+	# Collision exceptions are used rather than physics layers so that
+	# everything else (world, enemies, the tail's rays, the Sniper's
+	# echo) keeps seeing players exactly as before.
+	for other in get_tree().get_nodes_in_group("players"):
+		if other == self or not (other is CollisionObject3D):
+			continue
+		add_collision_exception_with(other)
+		(other as CollisionObject3D).add_collision_exception_with(self)
+
+	# Place OURSELVES at our spawn slot (STO-CORE-004). The host picks
+	# a spot when it spawns us, but we own our own position — its
+	# choice is overwritten by ours the moment we sync. Both sides
+	# derive the same slot from the peer id, so this agrees with the
+	# host rather than fighting it.
+	if is_multiplayer_authority() and name.is_valid_int():
+		var scene := get_tree().current_scene
+		if scene != null and scene.has_method("spawn_position_for_peer"):
+			position = scene.call("spawn_position_for_peer", name.to_int())
+
 	# Only the owning peer looks through this player's camera.
 	camera.current = is_multiplayer_authority()
 

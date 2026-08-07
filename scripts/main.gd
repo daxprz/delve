@@ -18,6 +18,12 @@ const ENEMY_SPAWNS: Array = [
 	Vector3(0.0, 1.0, -12.0),
 ]
 
+## Players arrive spread around a ring rather than stacked on one
+## point (STO-CORE-004). 1.6 m is comfortably wider than the 0.8 m
+## capsule diameter.
+const SPAWN_RING_RADIUS := 1.6
+const SPAWN_RING_SLOTS := 6
+
 @onready var players: Node3D = $Players
 @onready var spawn_point: Marker3D = $SpawnPoint
 @onready var menu: CanvasLayer = $Menu
@@ -315,5 +321,36 @@ func _spawn_player(id: int) -> void:
 	DebugOverlay.log("network/spawn", self, "spawning player for peer %d", [id])
 	var player: CharacterBody3D = PLAYER_SCENE.instantiate()
 	player.name = str(id)  # peer id doubles as node name -> authority
-	player.position = spawn_point.position
+	player.position = spawn_position_for_peer(id)
 	players.add_child(player)
+
+
+## Where a given peer appears (STO-CORE-004).
+##
+## Everyone used to spawn on the exact same marker, which was fine
+## with one player and catastrophic with two: the capsules overlapped
+## perfectly, and since a remote player's position is driven by the
+## network sync it cannot be pushed aside — so each instance shoved
+## its OWN player up to escape, synced the higher position, and shoved
+## the other one higher again. Both players climbed forever (measured
+## at 2.5 km and still accelerating).
+##
+## Derived from the PEER ID rather than a spawn counter, because each
+## client has authority over its own player: whatever position the
+## host picks is immediately overwritten by the client's own. Both
+## sides computing the same answer from the id needs no messaging and
+## cannot race.
+func spawn_position_for_peer(id: int) -> Vector3:
+	var base := spawn_point.position
+	if id == 1:
+		return base                      # the host takes the middle
+	# A handful of fixed slots is not enough: peer ids are effectively
+	# random, so two of them collide on the same slot far more often
+	# than intuition suggests (4242 and 777 both landed on slot 2).
+	# Spread continuously instead — angle AND distance both derived
+	# from the id — so two peers landing on the same spot would take a
+	# full hash collision.
+	var h := absi(hash(id))
+	var angle := float(h % 36000) / 36000.0 * TAU
+	var radius := SPAWN_RING_RADIUS + float((h / 36000) % 100) / 100.0 * 1.4
+	return base + Vector3(cos(angle), 0.0, sin(angle)) * radius
