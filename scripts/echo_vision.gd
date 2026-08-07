@@ -30,6 +30,7 @@ const PULSE_INTERVAL := 0.12    # min seconds between pulses per mover
 const MIN_MOVE_SPEED := 0.35    # slower than this makes no sound
 const RAYS_PER_PULSE := 26
 const BLAST_RAYS := 110      # a gunshot draws the room properly
+const SCAN_FADE := 1.4       # seconds a lidar scan takes to fade away
 const PULSE_RADIUS_BASE := 6.5  # metres, at MIN_MOVE_SPEED
 const PULSE_RADIUS_PER_SPEED := 0.9
 const PULSE_RADIUS_MAX := 16.0
@@ -145,13 +146,26 @@ func emit_blast(origin: Vector3, radius := 45.0) -> void:
 	_cast_pulse(origin, radius, 1.0, null, BLAST_RAYS)
 
 
+## A LIDAR SCAN (STO-CHARACTER-048): a tight cone of rays swept in the
+## direction you are facing. Unlike a footstep's ripple, the points it
+## paints HOLD for a few seconds before fading, so a scan gives the
+## Sniper a steady picture of what is ahead instead of a glimpse.
+func emit_scan(origin: Vector3, dir: Vector3, radius := 40.0,
+		half_angle_deg := 32.0, rays := 150, linger := 3.2) -> void:
+	_pulses += 1
+	_cast_pulse(origin, radius, 1.0, null, rays, linger,
+			dir.normalized(), deg_to_rad(half_angle_deg))
+
+
 func _cast_pulse(origin: Vector3, radius: float, strength: float,
-		source: Node3D, rays: int) -> void:
+		source: Node3D, rays: int, linger := 0.0,
+		cone_axis := Vector3.ZERO, cone_angle := 0.0) -> void:
 	var space := get_world_3d().direct_space_state
 	var exclude := _creature_rids(source)
 	var marks: Array = []
 	for i in rays:
-		var dir := _sphere_dir_of(i, rays)
+		var dir := _cone_dir(i, rays, cone_axis, cone_angle) \
+				if cone_angle > 0.0 else _sphere_dir_of(i, rays)
 		var q := PhysicsRayQueryParameters3D.create(
 				origin, origin + dir * radius, WORLD_MASK)
 		q.exclude = exclude
@@ -172,6 +186,7 @@ func _cast_pulse(origin: Vector3, radius: float, strength: float,
 		"strength": strength,
 		"radius": radius,
 		"marks": marks,
+		"linger": linger,
 	})
 
 
@@ -199,6 +214,21 @@ func _creature_rids(_source: Node3D) -> Array:
 ## Evenly-ish spread directions (spherical Fibonacci), jittered per
 ## pulse so repeated pulses fill the room in rather than re-tracing
 ## the same lines.
+## A direction inside a cone around `axis` — the lidar's sweep. Uses
+## the same spiral as the sphere version so coverage stays even.
+func _cone_dir(i: int, rays: int, axis: Vector3, half_angle: float) -> Vector3:
+	var k := (float(i) + _rng.randf()) / float(rays)
+	var cos_min := cos(half_angle)
+	var cz := lerpf(1.0, cos_min, k)          # spiral outward from centre
+	var sz := sqrt(maxf(0.0, 1.0 - cz * cz))
+	var theta := PI * (1.0 + sqrt(5.0)) * float(i)
+	var up := Vector3.UP if absf(axis.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	var right := axis.cross(up).normalized()
+	var real_up := right.cross(axis).normalized()
+	return (axis * cz + right * (sz * cos(theta))
+			+ real_up * (sz * sin(theta))).normalized()
+
+
 func _sphere_dir_of(i: int, rays: int) -> Vector3:
 	var k := float(i) + _rng.randf()
 	var phi := acos(clampf(1.0 - 2.0 * k / float(rays), -1.0, 1.0))
@@ -214,7 +244,13 @@ func _expire_marks() -> void:
 	for p in _pulses_live:
 		var elapsed := float(now - int(p["born"])) / 1000.0
 		var front := elapsed * WAVE_SPEED
-		if front <= float(p["radius"]) + WAVE_THICKNESS * (1.0 + WAVE_TAIL * 2.0):
+		var lifetime: float = float(p.get("linger", 0.0))
+		if lifetime > 0.0:
+			# A lidar scan lives until its held points have faded out.
+			if elapsed <= float(p["radius"]) / WAVE_SPEED + lifetime + SCAN_FADE:
+				live.append(p)
+		elif front <= float(p["radius"]) \
+				+ WAVE_THICKNESS * (1.0 + WAVE_TAIL * 2.0):
 			live.append(p)
 	_pulses_live = live
 
@@ -242,6 +278,20 @@ func _wave_brightness(dist: float, front: float, radius: float) -> float:
 	return band * spread
 
 
+## Lidar brightness: dark until the sweep reaches this point, then it
+## HOLDS at full while the scan lasts, then fades out. That is what
+## makes a scan a steady picture rather than a passing ripple.
+func _scan_brightness(dist: float, elapsed: float, linger: float) -> float:
+	var arrival := dist / WAVE_SPEED
+	var since := elapsed - arrival
+	if since < 0.0:
+		return 0.0                      # the sweep hasn't got here yet
+	if since < linger:
+		return 1.0                      # painted and holding
+	var fading := (since - linger) / SCAN_FADE
+	return clampf(1.0 - fading, 0.0, 1.0)
+
+
 func _rebuild_mesh() -> void:
 	_mesh.clear_surfaces()
 	if _pulses_live.is_empty():
@@ -255,8 +305,11 @@ func _rebuild_mesh() -> void:
 		var front := elapsed * WAVE_SPEED
 		var strength := float(p["strength"])
 		var radius := float(p["radius"])
+		var linger: float = float(p.get("linger", 0.0))
 		for m in p["marks"]:
-			var alpha := _wave_brightness(float(m["dist"]), front, radius) * strength
+			var alpha := (_scan_brightness(float(m["dist"]), elapsed, linger)
+					if linger > 0.0
+					else _wave_brightness(float(m["dist"]), front, radius)) * strength
 			if alpha <= 0.01:
 				continue
 			# Fainter with distance from the Sniper (operator decision).

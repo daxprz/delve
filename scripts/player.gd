@@ -162,6 +162,15 @@ var _gun_cd := 0.0
 var _fire_held := false
 var _gun_fill: ColorRect
 var _shots_fired := 0
+## Lidar scan on RMB (STO-CHARACTER-048): a quiet cone-shaped sweep
+## that paints what's ahead and holds it for a few seconds. Unlike the
+## rifle it doesn't shout your position across the map — but it only
+## shows the direction you're facing.
+const SCAN_COOLDOWN := 2.2
+const SCAN_RANGE := 40.0
+var _scan_cd := 0.0
+var _scan_held := false
+var _scans_done := 0
 
 ## Whether the player wants the mouse captured. We cannot capture in
 ## _ready() — on Wayland that errors until the pointer is actually
@@ -362,6 +371,29 @@ func fire_gun() -> void:
 		DebugOverlay.log("player/abilities", self,
 				"%s: gunshot hit the world at (%.1f, %.1f, %.1f)",
 				[name, point.x, point.y, point.z])
+
+
+## Sweep a lidar cone where you're looking (STO-CHARACTER-048). The
+## points it paints hold for a few seconds and then fade, so a scan is
+## a steady look ahead rather than the rifle's one-off flash — and it
+## doesn't announce you the way a gunshot does.
+func lidar_scan() -> void:
+	var echo := get_node_or_null("EchoVision")
+	if echo == null:
+		return
+	_scan_cd = SCAN_COOLDOWN
+	_scans_done += 1
+	echo.call("emit_scan", camera.global_position,
+			-camera.global_transform.basis.z, SCAN_RANGE)
+	DebugOverlay.log("player/abilities", self, "%s: lidar scan", [name])
+
+
+func scan_cooldown() -> float:
+	return maxf(_scan_cd, 0.0)
+
+
+func scans_done() -> int:
+	return _scans_done
 
 
 func gun_cooldown() -> float:
@@ -658,6 +690,14 @@ func _physics_process(delta: float) -> void:
 		if firing and not _fire_held and _gun_cd <= 0.0:
 			fire_gun()
 		_fire_held = firing
+
+		if _scan_cd > 0.0:
+			_scan_cd -= delta
+		var scanning := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+				and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+		if scanning and not _scan_held and _scan_cd <= 0.0:
+			lidar_scan()
+		_scan_held = scanning
 
 	# Grapple reel-in from the mechanical arms (STO-CHARACTER-044).
 	# Applied AFTER the walk input, which overwrites velocity.x/z every
