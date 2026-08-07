@@ -147,6 +147,22 @@ var _blind := false
 var grapple_pull := Vector3.ZERO
 const GRAPPLE_MAX_SPEED := 12.0
 
+## The Sniper's rifle (STO-CHARACTER-047). A single shot reaches right
+## across the map and floors what it hits — but the BANG floods the
+## area with one enormous echo wave. That is how a blind Sniper looks
+## around: you shoot to see, and everything hears you do it.
+const GUN_RANGE := 140.0
+const GUN_DAMAGE := 55.0
+const GUN_KNOCKBACK := 17.0      # comfortably past any ragdoll threshold
+const GUN_COOLDOWN := 1.6        # slow, deliberate, bolt-action
+const GUN_BLAST_RADIUS := 45.0   # how far the shot's echo reaches
+const GUN_IMPACT_RADIUS := 14.0  # smaller echo where the bullet lands
+var _has_gun := false
+var _gun_cd := 0.0
+var _fire_held := false
+var _gun_fill: ColorRect
+var _shots_fired := 0
+
 ## Whether the player wants the mouse captured. We cannot capture in
 ## _ready() — on Wayland that errors until the pointer is actually
 ## over the window — so we capture lazily on the first mouse event.
@@ -189,6 +205,7 @@ func _ready() -> void:
 	_can_carry = def.get("carry", false)
 	_can_pounce = def.get("pounce", false)
 	_blind = bool(def.get("blind", false))
+	_has_gun = bool(def.get("gun", false))
 	_cam_base_y = camera.position.y
 	_abilities = def.get("abilities", [])
 	if is_multiplayer_authority():
@@ -308,6 +325,53 @@ func combo() -> int:
 	return _combo
 
 
+## Fire the rifle: a hitscan shot along the aim, and one enormous
+## echo blast from the muzzle that lights the room (STO-CHARACTER-047).
+func fire_gun() -> void:
+	_gun_cd = GUN_COOLDOWN
+	_shots_fired += 1
+	var from := camera.global_position
+	var aim := -camera.global_transform.basis.z
+	var q := PhysicsRayQueryParameters3D.create(from, from + aim * GUN_RANGE)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+
+	# The bang: one huge wave from the muzzle. This is the Sniper's
+	# only way to see a room properly — and it announces exactly where
+	# it was fired from.
+	var echo := get_node_or_null("EchoVision")
+	if echo != null:
+		echo.call("emit_blast", from, GUN_BLAST_RADIUS)
+
+	if hit.is_empty():
+		DebugOverlay.log("player/abilities", self, "%s: gunshot (missed)", [name])
+		return
+	var target = hit.get("collider")
+	var point: Vector3 = hit["position"]
+	# A second, smaller echo where the bullet strikes, so you can read
+	# what you hit even at the far end of the room.
+	if echo != null:
+		echo.call("emit_blast", point, GUN_IMPACT_RADIUS)
+	if target != null and target.has_method("take_damage"):
+		if target.has_method("apply_knockback"):
+			target.call("apply_knockback", aim * GUN_KNOCKBACK)
+		deal_damage(target, GUN_DAMAGE)
+		DebugOverlay.log("player/abilities", self, "%s: gunshot hit %s",
+				[name, target.name])
+	else:
+		DebugOverlay.log("player/abilities", self,
+				"%s: gunshot hit the world at (%.1f, %.1f, %.1f)",
+				[name, point.x, point.y, point.z])
+
+
+func gun_cooldown() -> float:
+	return maxf(_gun_cd, 0.0)
+
+
+func shots_fired() -> int:
+	return _shots_fired
+
+
 ## Seconds left on the pounce cooldown (0 = ready). For HUD/tests.
 func pounce_cooldown() -> float:
 	return maxf(_pounce_cd, 0.0)
@@ -362,6 +426,24 @@ func _build_hud() -> void:
 		_fuel_fill.size = Vector2(220, 16)
 		fbg.add_child(_fuel_fill)
 
+	# Sniper: a bar showing when the next shot is ready.
+	if _has_gun:
+		var gbg := ColorRect.new()
+		gbg.color = Color(0, 0, 0, 0.55)
+		gbg.size = Vector2(224, 20)
+		gbg.anchor_top = 1.0
+		gbg.anchor_bottom = 1.0
+		gbg.offset_left = 20
+		gbg.offset_top = -78
+		gbg.offset_right = 244
+		gbg.offset_bottom = -58
+		hud.add_child(gbg)
+		_gun_fill = ColorRect.new()
+		_gun_fill.color = Color(0.9, 0.85, 0.4)
+		_gun_fill.position = Vector2(2, 2)
+		_gun_fill.size = Vector2(220, 16)
+		gbg.add_child(_gun_fill)
+
 	# Pounce characters: a bar that empties on use and refills as the
 	# cooldown ticks down — green when ready (STO-CHARACTER-033).
 	if _can_pounce:
@@ -387,6 +469,11 @@ func _process(_delta: float) -> void:
 		_hp_fill.size.x = 220.0 * (_health / _max_health)
 	if _fuel_fill != null:
 		_fuel_fill.size.x = 220.0 * clampf(_fly_fuel / FLY_MAX_FUEL, 0.0, 1.0)
+	if _gun_fill != null:
+		var loaded := 1.0 - clampf(_gun_cd / GUN_COOLDOWN, 0.0, 1.0)
+		_gun_fill.size.x = 220.0 * loaded
+		_gun_fill.color = Color(0.9, 0.85, 0.4) if _gun_cd <= 0.0 \
+				else Color(0.6, 0.4, 0.2)
 	if _pounce_fill != null:
 		var ready := 1.0 - clampf(_pounce_cd / POUNCE_COOLDOWN, 0.0, 1.0)
 		_pounce_fill.size.x = 220.0 * ready
@@ -561,6 +648,16 @@ func _physics_process(delta: float) -> void:
 		else:
 			velocity.x = move_toward(velocity.x, 0.0, _speed)
 			velocity.z = move_toward(velocity.z, 0.0, _speed)
+
+	# The Sniper's rifle (STO-CHARACTER-047).
+	if _has_gun:
+		if _gun_cd > 0.0:
+			_gun_cd -= delta
+		var firing := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
+				and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		if firing and not _fire_held and _gun_cd <= 0.0:
+			fire_gun()
+		_fire_held = firing
 
 	# Grapple reel-in from the mechanical arms (STO-CHARACTER-044).
 	# Applied AFTER the walk input, which overwrites velocity.x/z every

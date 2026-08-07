@@ -55,6 +55,7 @@ static var LIST := [
 		"wall_climb": false, "tail": false, "humanoid": true,
 		"ears": true,          # STO-CHARACTER-038
 		"blind": true,         # STO-CHARACTER-040: sees by echo only
+		"gun": true,           # STO-CHARACTER-047: the rifle
 		"abilities": [],
 	},
 ]

@@ -29,6 +29,7 @@ const PULSE_INTERVAL := 0.12    # min seconds between pulses per mover
 ## burns brighter — but a walk is never nearly-invisible.
 const MIN_MOVE_SPEED := 0.35    # slower than this makes no sound
 const RAYS_PER_PULSE := 26
+const BLAST_RAYS := 110      # a gunshot draws the room properly
 const PULSE_RADIUS_BASE := 6.5  # metres, at MIN_MOVE_SPEED
 const PULSE_RADIUS_PER_SPEED := 0.9
 const PULSE_RADIUS_MAX := 16.0
@@ -129,15 +130,28 @@ func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
 	var radius := clampf(
 			(PULSE_RADIUS_BASE + speed * PULSE_RADIUS_PER_SPEED) * loud,
 			PULSE_RADIUS_BASE * LOUDNESS_MIN, PULSE_RADIUS_MAX)
-	var space := get_world_3d().direct_space_state
-	var exclude := _creature_rids(source)
 	var strength := clampf(clampf(speed / 6.0, STRENGTH_FLOOR, 1.0) * loud,
 			QUIET_FLOOR, 1.0)
 	_pulses += 1
+	_cast_pulse(origin, radius, strength, source, RAYS_PER_PULSE)
 
+
+## A GUNSHOT (STO-CHARACTER-047): far louder than any footstep — one
+## wave that floods the whole area, with many more rays so the room
+## really is drawn rather than sketched. This is how a blind Sniper
+## sees: you shoot to look, and everything hears you do it.
+func emit_blast(origin: Vector3, radius := 45.0) -> void:
+	_pulses += 1
+	_cast_pulse(origin, radius, 1.0, null, BLAST_RAYS)
+
+
+func _cast_pulse(origin: Vector3, radius: float, strength: float,
+		source: Node3D, rays: int) -> void:
+	var space := get_world_3d().direct_space_state
+	var exclude := _creature_rids(source)
 	var marks: Array = []
-	for i in RAYS_PER_PULSE:
-		var dir := _sphere_dir(i)
+	for i in rays:
+		var dir := _sphere_dir_of(i, rays)
 		var q := PhysicsRayQueryParameters3D.create(
 				origin, origin + dir * radius, WORLD_MASK)
 		q.exclude = exclude
@@ -185,9 +199,9 @@ func _creature_rids(_source: Node3D) -> Array:
 ## Evenly-ish spread directions (spherical Fibonacci), jittered per
 ## pulse so repeated pulses fill the room in rather than re-tracing
 ## the same lines.
-func _sphere_dir(i: int) -> Vector3:
+func _sphere_dir_of(i: int, rays: int) -> Vector3:
 	var k := float(i) + _rng.randf()
-	var phi := acos(clampf(1.0 - 2.0 * k / float(RAYS_PER_PULSE), -1.0, 1.0))
+	var phi := acos(clampf(1.0 - 2.0 * k / float(rays), -1.0, 1.0))
 	var theta := PI * (1.0 + sqrt(5.0)) * k
 	return Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
 
