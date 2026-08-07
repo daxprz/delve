@@ -27,13 +27,21 @@ const RAYS_PER_PULSE := 26
 const PULSE_RADIUS_BASE := 3.0  # metres, at MIN_MOVE_SPEED
 const PULSE_RADIUS_PER_SPEED := 0.9
 const PULSE_RADIUS_MAX := 14.0
-const MARK_LIFETIME := 1.7      # seconds a mark stays before fading out
+## The echo travels as an expanding WAVE (STO-CHARACTER-041): a
+## surface lights up as the wavefront sweeps over it, then dims behind
+## it, and the whole wave weakens as it spreads outward.
+const WAVE_SPEED := 11.0        # m/s the wavefront expands
+const WAVE_THICKNESS := 1.9     # m — how wide the lit band is
+const WAVE_TAIL := 0.55         # how much glow lingers behind the front
 const MARK_SIZE := 0.16
 const FADE_FULL := 8.0          # metres: closer than this = full strength
 const FADE_NONE := 34.0         # metres: beyond this = invisible
 const MAX_MARKS := 900
 
-var _marks: Array = []          # {pos, normal, born, strength}
+## Live wavefronts. Each: {origin, born, strength, radius, marks},
+## where marks are {pos, normal, dist} — dist from the pulse origin,
+## which is what makes the wave sweep outward over the geometry.
+var _pulses_live: Array = []
 var _mesh: ImmediateMesh
 var _mesh_node: MeshInstance3D
 var _cooldowns: Dictionary = {} # instance id -> seconds until next pulse
@@ -110,6 +118,7 @@ func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
 	var strength := clampf(speed / 6.0, 0.35, 1.0)
 	_pulses += 1
 
+	var marks: Array = []
 	for i in RAYS_PER_PULSE:
 		var dir := _sphere_dir(i)
 		var q := PhysicsRayQueryParameters3D.create(
@@ -118,14 +127,21 @@ func emit_pulse(origin: Vector3, speed: float, source: Node3D = null) -> void:
 		var hit := space.intersect_ray(q)
 		if hit.is_empty():
 			continue
-		_marks.append({
-			"pos": hit["position"],
+		var pos: Vector3 = hit["position"]
+		marks.append({
+			"pos": pos,
 			"normal": hit["normal"],
-			"born": Time.get_ticks_msec(),
-			"strength": strength,
+			"dist": origin.distance_to(pos),
 		})
-	if _marks.size() > MAX_MARKS:
-		_marks = _marks.slice(_marks.size() - MAX_MARKS)
+	if marks.is_empty():
+		return
+	_pulses_live.append({
+		"origin": origin,
+		"born": Time.get_ticks_msec(),
+		"strength": strength,
+		"radius": radius,
+		"marks": marks,
+	})
 
 
 ## Every creature's RID — echoes bounce off the room, not off people.
@@ -148,56 +164,119 @@ func _sphere_dir(i: int) -> Vector3:
 	return Vector3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta))
 
 
+## A pulse dies once its wavefront (plus the glow trailing behind it)
+## has swept past everything it could reach.
 func _expire_marks() -> void:
 	var now := Time.get_ticks_msec()
 	var live: Array = []
-	for m in _marks:
-		if now - int(m["born"]) < int(MARK_LIFETIME * 1000.0):
-			live.append(m)
-	_marks = live
+	for p in _pulses_live:
+		var elapsed := float(now - int(p["born"])) / 1000.0
+		var front := elapsed * WAVE_SPEED
+		if front <= float(p["radius"]) + WAVE_THICKNESS * (1.0 + WAVE_TAIL * 2.0):
+			live.append(p)
+	_pulses_live = live
+
+
+## Brightness of a surface at `dist` from the pulse origin when the
+## wavefront has reached `front`. Bright at the front, trailing off
+## behind it, dark ahead of it — and the whole wave weakens as it
+## spreads out (energy over a bigger and bigger shell).
+func _wave_brightness(dist: float, front: float, radius: float) -> float:
+	var delta := front - dist
+	if delta < 0.0:
+		# The wave hasn't arrived here yet — still dark.
+		var lead := -delta / (WAVE_THICKNESS * 0.35)
+		if lead > 1.0:
+			return 0.0
+		return 1.0 - lead
+	# Behind the front: a longer, softer tail.
+	var tail := delta / (WAVE_THICKNESS * (1.0 + WAVE_TAIL * 2.0))
+	if tail > 1.0:
+		return 0.0
+	var band := 1.0 - tail
+	# Spreading loss: the further the front has travelled, the weaker.
+	var spread := 1.0 - clampf(front / maxf(radius, 0.01), 0.0, 1.0) * 0.75
+	return band * spread
 
 
 func _rebuild_mesh() -> void:
 	_mesh.clear_surfaces()
-	if _marks.is_empty():
+	if _pulses_live.is_empty():
 		return
 	var now := Time.get_ticks_msec()
 	var ear := _listener.global_position if _listener != null else global_position
+	var began := false
 
-	_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
-	for m in _marks:
-		var age := float(now - int(m["born"])) / (MARK_LIFETIME * 1000.0)
-		var alpha := (1.0 - age) * float(m["strength"])
-		# Fainter with distance from the Sniper (operator decision).
-		var d: float = ear.distance_to(m["pos"])
-		alpha *= 1.0 - clampf((d - FADE_FULL) / (FADE_NONE - FADE_FULL), 0.0, 1.0)
-		if alpha <= 0.01:
-			continue
-		var col := Color(0.55, 0.85, 1.0, alpha)
-		# A small cross lying ON the surface, so walls read as walls.
-		var n: Vector3 = m["normal"]
-		var t1 := n.cross(Vector3.UP)
-		if t1.length() < 0.01:
-			t1 = n.cross(Vector3.RIGHT)
-		t1 = t1.normalized() * MARK_SIZE
-		var t2 := n.cross(t1).normalized() * MARK_SIZE
-		var p: Vector3 = m["pos"] + n * 0.01
-		_mesh.surface_set_color(col)
-		_mesh.surface_add_vertex(p - t1)
-		_mesh.surface_add_vertex(p + t1)
-		_mesh.surface_set_color(col)
-		_mesh.surface_add_vertex(p - t2)
-		_mesh.surface_add_vertex(p + t2)
-	_mesh.surface_end()
+	for p in _pulses_live:
+		var elapsed := float(now - int(p["born"])) / 1000.0
+		var front := elapsed * WAVE_SPEED
+		var strength := float(p["strength"])
+		var radius := float(p["radius"])
+		for m in p["marks"]:
+			var alpha := _wave_brightness(float(m["dist"]), front, radius) * strength
+			if alpha <= 0.01:
+				continue
+			# Fainter with distance from the Sniper (operator decision).
+			var d: float = ear.distance_to(m["pos"])
+			alpha *= 1.0 - clampf((d - FADE_FULL) / (FADE_NONE - FADE_FULL),
+					0.0, 1.0)
+			if alpha <= 0.01:
+				continue
+			if not began:
+				_mesh.surface_begin(Mesh.PRIMITIVE_LINES)
+				began = true
+			var col := Color(0.55, 0.85, 1.0, alpha)
+			# A small cross lying ON the surface, so walls read as walls.
+			var n: Vector3 = m["normal"]
+			var t1 := n.cross(Vector3.UP)
+			if t1.length() < 0.01:
+				t1 = n.cross(Vector3.RIGHT)
+			t1 = t1.normalized() * MARK_SIZE
+			var t2 := n.cross(t1).normalized() * MARK_SIZE
+			var pos: Vector3 = m["pos"] + n * 0.01
+			_mesh.surface_set_color(col)
+			_mesh.surface_add_vertex(pos - t1)
+			_mesh.surface_add_vertex(pos + t1)
+			_mesh.surface_set_color(col)
+			_mesh.surface_add_vertex(pos - t2)
+			_mesh.surface_add_vertex(pos + t2)
+	if began:
+		_mesh.surface_end()
 
 
 # --- test accessors ---------------------------------------------------
 
 func mark_count() -> int:
-	return _marks.size()
+	var n := 0
+	for p in _pulses_live:
+		n += p["marks"].size()
+	return n
 
 func pulse_count() -> int:
 	return _pulses
+
+func live_wave_count() -> int:
+	return _pulses_live.size()
+
+## Every live mark, flattened (for tests).
+func all_marks() -> Array:
+	var out: Array = []
+	for p in _pulses_live:
+		out.append_array(p["marks"])
+	return out
+
+## Where each live wavefront has expanded to, in metres.
+func wave_fronts() -> Array:
+	var now := Time.get_ticks_msec()
+	var out: Array = []
+	for p in _pulses_live:
+		out.append(float(now - int(p["born"])) / 1000.0 * WAVE_SPEED)
+	return out
+
+## Brightness a surface `dist` from a wave's origin shows when the
+## front has reached `front` (for tests).
+func brightness_for(dist: float, front: float, radius := 10.0) -> float:
+	return _wave_brightness(dist, front, radius)
 
 ## Strength a mark at `pos` would render with (0 = invisible).
 func alpha_at(pos: Vector3) -> float:

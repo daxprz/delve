@@ -18,6 +18,7 @@ var _echo: Node3D
 var _mover: CharacterBody3D
 var _still_marks := 0
 var _peak_marks := 0
+var _fronts_seen: Array = []
 
 
 func _physics_process(_d: float) -> bool:
@@ -79,7 +80,7 @@ func _physics_process(_d: float) -> bool:
 			# room geometry, so only count marks up at body height.)
 			var on_body := 0
 			var on_floor_below := 0
-			for m in _echo.get("_marks"):
+			for m in _echo.call("all_marks"):
 				var p: Vector3 = m["pos"]
 				var horiz := Vector2(p.x - _mover.global_position.x,
 						p.z - _mover.global_position.z).length()
@@ -102,6 +103,26 @@ func _physics_process(_d: float) -> bool:
 					% [near_a, far_a])
 			_check(gone_a <= 0.001,
 					"echoes beyond hearing range are invisible (%.2f)" % gone_a)
+
+			# --- The echo travels as a WAVE (STO-CHARACTER-041) ---
+			# A surface is dark before the front arrives, brightest as
+			# it passes, and dimmer behind it.
+			var before: float = _echo.call("brightness_for", 8.0, 2.0)
+			var at_front: float = _echo.call("brightness_for", 8.0, 8.0)
+			var behind: float = _echo.call("brightness_for", 8.0, 12.0)
+			_check(before <= 0.01,
+					"a surface is dark before the wave reaches it (%.2f)" % before)
+			_check(at_front > behind and behind >= 0.0,
+					"brightest at the wavefront, dimmer behind (%.2f -> %.2f)"
+					% [at_front, behind])
+			# The wave weakens as it spreads out.
+			var near_front: float = _echo.call("brightness_for", 2.0, 2.0, 10.0)
+			var far_front: float = _echo.call("brightness_for", 9.0, 9.0, 10.0)
+			_check(near_front > far_front,
+					"the wave gets dimmer as it expands (%.2f -> %.2f)"
+					% [near_front, far_front])
+			# Fronts actually advance over time.
+			_fronts_seen = _echo.call("wave_fronts")
 			if is_instance_valid(_mover):
 				_mover.queue_free()
 			_ticks = 0
@@ -111,8 +132,13 @@ func _physics_process(_d: float) -> bool:
 			if _ticks < 150:
 				return false
 			_check(int(_echo.call("mark_count")) == 0,
-					"marks fade away when everything goes quiet (%d left)"
+					"waves fade away when everything goes quiet (%d left)"
 					% int(_echo.call("mark_count")))
+			_check(int(_echo.call("live_wave_count")) == 0,
+					"no live wavefronts remain")
+			_check(not _fronts_seen.is_empty(),
+					"wavefronts were tracked while moving (%d)"
+					% _fronts_seen.size())
 			_phase = "others"
 		"others":
 			# A non-blind character sees normally and has no echo node.
