@@ -1,6 +1,6 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://bov1iy2ffao1g"]
 
-[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://dgp7shqi6vky0" path="res://scripts/main.gd" id="1_main"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky1"]
 sky_horizon_color = Color(0.66, 0.67, 0.69, 1)
@@ -25,44 +25,46 @@ albedo_color = Color(0.35, 0.42, 0.3, 1)
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
 size = Vector3(120, 1, 120)
 
-[node name="Main" type="Node3D"]
+[node name="Main" type="Node3D" unique_id=831166010]
 script = ExtResource("1_main")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1326601314]
 environment = SubResource("Environment_env1")
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=144545671]
 transform = Transform3D(0.707107, -0.5, 0.5, 0, 0.707107, 0.707107, -0.707107, -0.5, 0.5, 0, 10, 0)
 shadow_enabled = true
 
-[node name="Ground" type="StaticBody3D" parent="."]
+[node name="Ground" type="StaticBody3D" parent="." unique_id=1064842814]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground"]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=1111337754]
 mesh = SubResource("BoxMesh_ground")
 surface_material_override/0 = SubResource("StandardMaterial3D_ground")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1905724479]
 shape = SubResource("BoxShape3D_ground")
 
-[node name="SpawnPoint" type="Marker3D" parent="."]
+[node name="SpawnPoint" type="Marker3D" parent="." unique_id=850027700]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
 
-[node name="Players" type="Node3D" parent="."]
+[node name="Players" type="Node3D" parent="." unique_id=1737086215]
 
-[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="." unique_id=1950729495]
 _spawnable_scenes = PackedStringArray("res://scenes/player.tscn")
 spawn_path = NodePath("../Players")
 
-[node name="Menu" type="CanvasLayer" parent="."]
+[node name="Menu" type="CanvasLayer" parent="." unique_id=2125788516]
 
-[node name="UI" type="Control" parent="Menu"]
+[node name="UI" type="Control" parent="Menu" unique_id=692952626]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="VBox" type="VBoxContainer" parent="Menu/UI"]
+[node name="VBox" type="VBoxContainer" parent="Menu/UI" unique_id=137043767]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -77,10 +79,10 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 16
 
-[node name="HostButton" type="Button" parent="Menu/UI/VBox"]
+[node name="HostButton" type="Button" parent="Menu/UI/VBox" unique_id=105452216]
 layout_mode = 2
 text = "Host"
 
-[node name="JoinButton" type="Button" parent="Menu/UI/VBox"]
+[node name="JoinButton" type="Button" parent="Menu/UI/VBox" unique_id=1725351044]
 layout_mode = 2
 text = "Join 127.0.0.1"

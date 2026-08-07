@@ -3,10 +3,9 @@ xid: EPI-UI-PAUSE-MENU
 parent: ../design.md
 kind: epic
 effort: ui
-status: shipped
+status: in-progress
 date: 2026-08-03
 bd-id: delve-1wg
-shipped: 2026-08-03
 ---
 
 # Pause menu

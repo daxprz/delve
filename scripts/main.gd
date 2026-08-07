@@ -33,8 +33,10 @@ func _ready() -> void:
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	_build_character_select()
 	_build_pause_menu()
-	$Menu/UI/VBox/HostButton.pressed.connect(host_game)
-	$Menu/UI/VBox/JoinButton.pressed.connect(join_game)
+	# bind(true): a button click guarantees the pointer is inside the
+	# window, so capturing immediately is Wayland-safe (STO-UI-002).
+	$Menu/UI/VBox/HostButton.pressed.connect(host_game.bind(true))
+	$Menu/UI/VBox/JoinButton.pressed.connect(join_game.bind(true))
 
 	# Build the obstacle playground (EPI-WORLD-PLAYGROUND).
 	var playground: Node3D = PlaygroundScript.new()
@@ -177,7 +179,7 @@ func _toggle_pause() -> void:
 	var p := not get_tree().paused
 	get_tree().paused = p
 	_pause_menu.visible = p
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if p else Input.MOUSE_MODE_CAPTURED
+	_set_mouse_locked(not p)
 
 
 func _to_main_menu() -> void:
@@ -186,19 +188,35 @@ func _to_main_menu() -> void:
 	get_tree().reload_current_scene()
 
 
-func host_game() -> void:
+## Whether the game currently wants the pointer locked (STO-UI-002).
+## Kept separate from Input.mouse_mode because the headless
+## DisplayServer doesn't support CAPTURED (tests read this instead).
+var mouse_locked := false
+
+
+func _set_mouse_locked(locked: bool) -> void:
+	mouse_locked = locked
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if locked \
+			else Input.MOUSE_MODE_VISIBLE
+
+
+func host_game(capture_mouse := false) -> void:
 	if Network.host() != OK:
 		return
 	menu.hide()
 	_in_game = true
+	if capture_mouse:
+		_set_mouse_locked(true)
 	_spawn_player(1)
 
 
-func join_game() -> void:
+func join_game(capture_mouse := false) -> void:
 	if Network.join() != OK:
 		return
 	menu.hide()
 	_in_game = true
+	if capture_mouse:
+		_set_mouse_locked(true)
 
 
 func _on_peer_connected(id: int) -> void:

@@ -2,10 +2,9 @@
 xid: DES-UI-001
 kind: design
 effort: ui
-status: shipped
+status: in-progress
 date: 2026-08-03
 bd-id: delve-9qi
-shipped: 2026-08-03
 ---
 
 # UI & menus
