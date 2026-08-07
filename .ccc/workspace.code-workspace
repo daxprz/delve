@@ -54,7 +54,7 @@
   // same order as `.ccc/settings.json#peer_roots[]`.
   "folders": [
     {
-      "name": "⛏️ delve (workspace)",
+      "name": "⚒️ delve (workspace)",
       "path": ".."
     }
   ],
@@ -68,7 +68,7 @@
     // When true + ccc-combine reachable at 127.0.0.1:cccCombinePort,
     // panes read from /state/SSE (fast, FTS5-backed).
     "ccc.useCccCombineApi": true,
-    "ccc.cccCombinePort": 7150,
+    "ccc.cccCombinePort": 7160,
 
     // Peacock — visual identifier for this project's window so
     // multiple open CCC projects don't blur together. Color is
