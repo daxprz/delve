@@ -48,6 +48,10 @@ const GRAB_REACH_LERP := 0.18
 # --- Grab tuning ---
 const GRAB_REACH := 3.0        # how far a hand can reach to grab (short reach)
 const REEL_IMPULSE := 0.5      # how strongly a grabbed box is pulled to the hand
+## Grabbing something solid hauls the player toward it (a real
+## grapple) — acceleration in m/s^2, and how close counts as arrived.
+const SELF_PULL := 26.0
+const SELF_PULL_STOP := 1.1
 
 # --- Ram tuning (STO-CHARACTER-021) ---
 # In punch mode you hold the button to stick the fist STRAIGHT OUT; running
@@ -140,7 +144,8 @@ func _make_arm(index: int, side: int, button: int, arm_name: String) -> void:
 		"side": side, "button": button, "root": root,
 		"points": pts, "prev": pts.duplicate(), "lengths": lengths,
 		"grabbed": false, "target": Vector3.ZERO, "was_pressed": false,
-		"grabbed_body": null, "extended": false, "force_extend": false,
+		"grabbed_body": null, "grabbed_enemy": null,
+		"extended": false, "force_extend": false,
 	})
 
 
@@ -319,8 +324,15 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 			body.apply_central_impulse(to_hand.normalized() * REEL_IMPULSE)
 		return
 
-	# Grabbed something solid (wall/pillar): the hand simply holds onto the
-	# point — no rope, no swing. Grabbing is just grabbing now.
+	# Grabbed something SOLID (wall, pillar, floor): the arm reels the
+	# PLAYER in toward the anchor — the Grabber actually pulls himself
+	# (STO-CHARACTER-044). Handed to the player as an acceleration so
+	# it survives the walk input, which rewrites velocity every tick.
+	var anchor: Vector3 = arm["target"]
+	var to_anchor := anchor - shoulder
+	var d := to_anchor.length()
+	if d > SELF_PULL_STOP:
+		_player.grapple_pull += to_anchor / d * SELF_PULL
 
 
 func _update_visual(arm: Dictionary) -> void:
@@ -371,17 +383,44 @@ func _update_grab_input() -> void:
 				if not hit.is_empty():
 					arm["grabbed"] = true
 					arm["target"] = hit["position"]
-					var col = hit.get("collider")
-					if col is RigidBody3D:
-						arm["grabbed_body"] = col
-					else:
-						# A solid surface (wall/pillar): the hand just latches
-						# onto the point — no rope swing (grab-only).
-						arm["grabbed_body"] = null
+					_attach(arm, hit.get("collider"))
 			elif was_pressed and not pressed:
-				arm["grabbed"] = false
-				arm["grabbed_body"] = null
+				_let_go(arm)
 		arm["was_pressed"] = pressed
+
+
+## Latch this arm onto whatever the aim ray hit (STO-CHARACTER-044).
+##   - an ENEMY  -> it goes limp instantly and is hauled along by the
+##                  arm (we hold a part of its ragdoll)
+##   - a RIGID body (crate) -> reeled toward the hand as before
+##   - anything SOLID (wall, pillar, floor) -> the anchor pulls the
+##                  PLAYER toward it: a real grapple
+func _attach(arm: Dictionary, col) -> void:
+	arm["grabbed_body"] = null
+	arm["grabbed_enemy"] = null
+	if col == null:
+		return
+	if col.has_method("ragdoll_now"):
+		var rag: Node3D = col.call("ragdoll_now")
+		if rag != null:
+			# Hold the torso — grabbing a limp body by the middle.
+			var part: RigidBody3D = rag.call("part", "Torso")
+			if part == null:
+				part = rag.call("part", "Pelvis")
+			arm["grabbed_body"] = part
+			arm["grabbed_enemy"] = col
+			return
+	if col is RigidBody3D:
+		arm["grabbed_body"] = col
+
+
+func _let_go(arm: Dictionary) -> void:
+	var e = arm.get("grabbed_enemy")
+	if e != null and is_instance_valid(e) and e.has_method("release_ragdoll"):
+		e.call("release_ragdoll")
+	arm["grabbed"] = false
+	arm["grabbed_body"] = null
+	arm["grabbed_enemy"] = null
 
 
 ## Ray from the centre of the screen (crosshair). Returns the raw hit
@@ -447,10 +486,10 @@ func total_length(i: int) -> float:
 func set_punch_mode(on: bool) -> void:
 	_punch_mode = on
 	if on:
-		# You can't hold a grab while punching — let go of everything.
+		# You can't hold a grab while punching — let go of everything
+		# (including any enemy being carried, so it isn't left limp).
 		for i in range(_arms.size()):
-			_arms[i]["grabbed"] = false
-			_arms[i]["grabbed_body"] = null
+			_let_go(_arms[i])
 	_update_fist_look()
 	print("[ARMS] mode = %s" % ("PUNCH" if on else "GRAB"))
 
@@ -562,14 +601,30 @@ func grab(i: int, target: Vector3) -> void:
 	_arms[i]["grabbed_body"] = null
 	_arms[i]["target"] = target
 
+## Programmatic equivalent of an aim-grab: latches onto `collider`
+## exactly as a mouse press would, so enemies ragdoll and solid
+## anchors reel the player in. (Tests, and any ability that grabs.)
+func grab_target(i: int, collider, point: Vector3) -> void:
+	_arms[i]["grabbed"] = true
+	_arms[i]["target"] = point
+	_attach(_arms[i], collider)
+
+
+func grabbed_enemy(i: int) -> Node:
+	return _arms[i].get("grabbed_enemy")
+
+
+func grabbed_body(i: int) -> Node:
+	return _arms[i].get("grabbed_body")
+
+
 func grab_body(i: int, body: Node, point: Vector3) -> void:
 	_arms[i]["grabbed"] = true
 	_arms[i]["grabbed_body"] = body
 	_arms[i]["target"] = point
 
 func release(i: int) -> void:
-	_arms[i]["grabbed"] = false
-	_arms[i]["grabbed_body"] = null
+	_let_go(_arms[i])   # also lets a held enemy go limp-and-recover
 
 func is_grabbed(i: int) -> bool:
 	return bool(_arms[i]["grabbed"])

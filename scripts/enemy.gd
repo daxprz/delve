@@ -40,6 +40,7 @@ var _getup := 0.0
 var _body_angle := 0.0          # getup blend: PI/2 (lying) -> 0 (upright)
 var _getup_time := GETUP_TIME   # this individual's stand-up time
 var _ragdoll: Node3D            # live EnemyRagdoll while knocked down
+var _held_ragdoll := false      # held by the Grabber: stays limp
 var _collider: CollisionShape3D
 
 # Physical character, derived from the body's variation scales (_ready).
@@ -138,7 +139,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		DebugOverlay.draw_point3("enemy/hits", self, global_position,
 				0.25, Color.RED)
-		if _downed <= 0.0 \
+		# A grabbed enemy stays limp for as long as it is held.
+		if not _held_ragdoll and _downed <= 0.0 \
 				and (bool(_ragdoll.call("at_rest")) or _downed < -RAGDOLL_TIMEOUT):
 			_exit_ragdoll()
 		return
@@ -279,11 +281,33 @@ func trip(impulse: Vector3) -> void:
 	_knockdown(Vector3(dv.x, maxf(dv.y, 2.0), dv.z), true)
 
 
+## Grabbed by the Grabber (STO-CHARACTER-044): go limp immediately and
+## STAY limp until released, so it can be hauled around. Returns the
+## live ragdoll so the arm can hold onto one of its parts.
+func ragdoll_now() -> Node3D:
+	if _ragdoll == null:
+		_knockdown(Vector3.ZERO, false)
+	_held_ragdoll = true
+	return _ragdoll
+
+
+## Let go of a held ragdoll — it drops and recovers on its own.
+func release_ragdoll() -> void:
+	if _held_ragdoll:
+		_held_ragdoll = false
+		_downed = maxf(_downed, 0.4)   # a moment on the floor before rising
+
+
+func is_held_ragdoll() -> bool:
+	return _held_ragdoll
+
+
 ## Put this enemy instantly back on its feet, discarding any ragdoll.
 ## Note a ragdolling enemy's POSITION is driven by its pelvis, so it
 ## must be recovered before it can be repositioned — moving the node
 ## alone would be undone on the next tick.
 func recover() -> void:
+	_held_ragdoll = false
 	if _ragdoll != null:
 		_exit_ragdoll(true)
 	_downed = 0.0

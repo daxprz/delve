@@ -141,6 +141,12 @@ var _pre_move_velocity := Vector3.ZERO
 ## Echo-sight flag (the Sniper sees by sound alone).
 var _blind := false
 
+## Reel-in acceleration written by the mechanical arms each tick while
+## an arm holds a solid anchor; consumed (and cleared) in
+## _physics_process. Vector3.ZERO = not grappling.
+var grapple_pull := Vector3.ZERO
+const GRAPPLE_MAX_SPEED := 12.0
+
 ## Whether the player wants the mouse captured. We cannot capture in
 ## _ready() — on Wayland that errors until the pointer is actually
 ## over the window — so we capture lazily on the first mouse event.
@@ -538,7 +544,11 @@ func _physics_process(delta: float) -> void:
 	if _push_lock > 0.0:
 		_push_lock -= delta
 
-	if _wall_lock > 0.0 or _push_lock > 0.0 \
+	# While an arm is reeling us in, walk input must not damp the pull
+	# away: without this the ground friction cancels all but a single
+	# tick of it every frame and the grapple barely moves you.
+	var grappling := grapple_pull != Vector3.ZERO
+	if _wall_lock > 0.0 or _push_lock > 0.0 or grappling \
 			or (_pouncing and not is_on_floor()):
 		# Keep momentum through a wall-jump launch or a pounce arc:
 		# only gentle steering, never a hard damp to walk speed.
@@ -551,6 +561,19 @@ func _physics_process(delta: float) -> void:
 		else:
 			velocity.x = move_toward(velocity.x, 0.0, _speed)
 			velocity.z = move_toward(velocity.z, 0.0, _speed)
+
+	# Grapple reel-in from the mechanical arms (STO-CHARACTER-044).
+	# Applied AFTER the walk input, which overwrites velocity.x/z every
+	# tick and would otherwise erase the pull entirely.
+	if grapple_pull != Vector3.ZERO:
+		velocity += grapple_pull * delta
+		# Cap the speed we can be reeled at, so a grapple is a brisk
+		# haul rather than a rocket into the wall.
+		var reel_dir := grapple_pull.normalized()
+		var along := velocity.dot(reel_dir)
+		if along > GRAPPLE_MAX_SPEED:
+			velocity -= reel_dir * (along - GRAPPLE_MAX_SPEED)
+		grapple_pull = Vector3.ZERO
 
 	# move_and_slide() rewrites `velocity` with the RESOLVED motion, so
 	# a blocked push reads as ~0 afterwards. Keep what we intended, so
