@@ -3,6 +3,10 @@ extends SceneTree
 ## Run with:  godot --headless -s res://tests/smoke_enemy_health.gd
 ##
 ## Verifies enemies have health, take_damage lowers it, and lethal damage
+## defeats them WITHOUT deleting them (STO-ENEMIES-016 — they leave a
+## body you can still shove around). This assertion was inverted: it
+## used to require the enemy be removed.
+## Original intent:
 ## defeats (frees) them. (The punch/ram integration is covered by
 ## smoke_punch.)
 
@@ -48,7 +52,10 @@ func _physics_process(_delta: float) -> bool:
 			_frames += 1
 			if _frames >= 3:
 				if not is_instance_valid(_e_dying):
-					_pass("lethal damage defeats (removes) the enemy")
+					_fail("the enemy was DELETED — it must leave a body "
+							+ "(STO-ENEMIES-016)")
+				elif bool(_e_dying.call("is_dead")):
+					_pass("lethal damage defeats the enemy but leaves a body")
 				else:
 					_fail("enemy survived lethal damage")
 				return _done()

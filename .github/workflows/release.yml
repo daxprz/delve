@@ -62,6 +62,25 @@ jobs:
 
           godot --version
 
+      - name: Check the in-game version matches the tag
+        # The top-right watermark (STO-UI-007) reads
+        # application/config/version. If that drifts from the tag, every
+        # download confidently displays the wrong version - which is
+        # worse than showing none, because people would trust it.
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          IN_GAME=$(sed -n 's/^config\/version="\(.*\)"$/\1/p' project.godot)
+          echo "tag=$TAG  project.godot=$IN_GAME"
+          if [ -z "$IN_GAME" ]; then
+            echo "::error::project.godot has no application/config/version"
+            exit 1
+          fi
+          if [ "$TAG" != "$IN_GAME" ]; then
+            echo "::error::version mismatch: tag v$TAG but project.godot says $IN_GAME"
+            exit 1
+          fi
+
       - name: Import assets
         # First run builds the .godot import cache. Godot exits non-zero
         # on some import warnings, which are not failures for us.

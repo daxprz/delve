@@ -5,7 +5,7 @@ extends SceneTree
 ## Verifies:
 ##   - Grabber has more max health than the Runner; players start full
 ##   - taking damage lowers health; dropping to 0 respawns at full health
-##   - an enemy touching the player damages it
+##   - an enemy that reaches the player damages it (STO-ENEMIES-011)
 
 const CharacterDB := preload("res://scripts/characters.gd")
 
@@ -80,14 +80,18 @@ func _physics_process(_delta: float) -> bool:
 			_phase = "fight"
 		"fight":
 			_frames += 1
-			if _frames >= 40:
-				# Enemies no longer deal damage — health stays full on contact.
-				if is_equal_approx(_player.health(), _hp_before):
-					_pass("an enemy touching the player does NO damage (%.0f)"
-							% _player.health())
-				else:
-					_fail("enemy still damaged the player (%.0f -> %.0f)"
+			if _frames >= 200:   # long enough to close in AND wind up
+				# INVERTED for STO-ENEMIES-011. This used to assert
+				# "an enemy touching the player does NO damage",
+				# because until then enemy.gd said in as many words
+				# that enemies only chase. The operator asked for
+				# enemies that fight back, so the requirement flipped.
+				if _player.health() < _hp_before:
+					_pass("an enemy that reaches the player damages it (%.0f -> %.0f)"
 							% [_hp_before, _player.health()])
+				else:
+					_fail("the enemy never landed a blow (%.0f)"
+							% _player.health())
 				return _done()
 	return false
 

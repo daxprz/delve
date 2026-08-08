@@ -43,23 +43,29 @@ func _physics_process(_delta: float) -> bool:
 		"wait_host_name":
 			var names: Dictionary = _main.call("lobby_names")
 			var host_name := String(names.get(1, ""))
+			var me := root.multiplayer.get_unique_id()
+			# Wait for BOTH names, not just the host's.
+			#
+			# The host broadcasts the lobby the moment a peer connects,
+			# which is BEFORE our _announce_name has crossed the wire —
+			# so the first list we receive legitimately has the host's
+			# name and an empty slot for us. Asserting on that first
+			# sighting was a race: it passed whenever our announcement
+			# happened to arrive first, and failed when it did not.
 			if host_name == "HostHilda":
-				_saw_first_name = true
-				_pass("client sees the host's real name (%s)" % host_name)
-				var shown := String(_main.call("lobby_display_name", 1))
-				if shown == "HostHilda":
-					_pass("and the lobby row shows it, not 'Host' (%s)" % shown)
-				else:
-					_fail("lobby row shows '%s', not the host's name" % shown)
+				if not _saw_first_name:
+					_saw_first_name = true
+					_pass("client sees the host's real name (%s)" % host_name)
+					var shown := String(_main.call("lobby_display_name", 1))
+					if shown == "HostHilda":
+						_pass("and the lobby row shows it, not 'Host' (%s)" % shown)
+					else:
+						_fail("lobby row shows '%s', not the host's name" % shown)
 				# The host must broadcast the whole list back, or we
 				# would only ever know about ourselves.
-				var me := root.multiplayer.get_unique_id()
 				if String(names.get(me, "")) == "ClientClara":
 					_pass("our own name came back in the host's broadcast")
-				else:
-					_fail("our name was not in the list the host sent (%s)"
-							% String(names.get(me, "")))
-				_phase = "wait_rename"
+					_phase = "wait_rename"
 			elif host_name == "HostHenry":
 				_fail("missed the first name — the rename arrived too early")
 				_phase = "wait_rename"

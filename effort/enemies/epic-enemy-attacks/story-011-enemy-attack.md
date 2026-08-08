@@ -88,6 +88,26 @@ probe that settled it printed distance and height every few ticks —
 `dist=1.60 dy=1.59` said "this is entirely vertical" at a glance,
 which no amount of reading the pounce code would have.
 
+### A test this broke shipped before it was noticed
+
+`smoke_health` asserted the OPPOSITE of this story — *"an enemy
+touching the player does NO damage"* — because that was the truth
+until now. It should have been inverted as part of this work.
+
+It was not, because it is one of the tests that must host a game, and
+the operator had delve open on port 7777 while this shipped. It never
+ran. **v0.1.9 was tagged with it failing**, and nobody knew until the
+port freed up.
+
+Inverted now, and the wait was longer than it needed to be: the old
+test allowed 40 physics ticks for contact, which is less than a single
+0.55 s wind-up. Raised to 200.
+
+The suite runner reporting "skipped (port in use)" separately from
+"passed" is the only reason this was recoverable rather than
+invisible. **A test that did not run is not a test that passed** —
+see STO-TOOLS-009.
+
 ### Multiplayer
 
 Enemy AI runs only on the server, but a player's health lives on the

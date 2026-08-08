@@ -12,6 +12,10 @@ config_version=5
 
 config/name="Delve"
 config/description="3D roguelike — every character grows stronger in its own unique way."
+; Shown as the top-right watermark (STO-UI-007). The release workflow
+; FAILS if this does not match the tag being built, so the watermark
+; can never quietly display a stale version.
+config/version="0.1.10"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 
@@ -24,6 +28,7 @@ DebugAspects="*res://scripts/autoload/debug_aspects.gd"
 DebugPanel="*res://scripts/autoload/debug_panel.gd"
 Network="*res://scripts/autoload/network.gd"
 Rcon="*res://scripts/autoload/rcon.gd"
+VersionWatermark="*res://scripts/autoload/version_watermark.gd"
 
 [input]
 

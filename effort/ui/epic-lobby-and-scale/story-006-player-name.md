@@ -83,6 +83,22 @@ not just themselves.
 - A rename mid-lobby is checked live: the host renames itself and the
   client must observe the change without reconnecting.
 
+### A race in this story's own test
+
+`smoke_name_client` asserted on the **first** lobby list it received.
+The host broadcasts the moment a peer connects — before the client's
+name announcement has crossed the wire — so that first list correctly
+contains the host's name and an empty slot for the client. The check
+passed whenever the announcement happened to win the race and failed
+when it did not.
+
+It only surfaced once the machine was busy enough to lose the race.
+Now it waits for **both** names rather than the first sighting.
+
+Not a product bug: the client sees itself as unnamed for a few
+milliseconds and the fallback covers it. But a test that passes on
+timing is not a test.
+
 ### Two things this turned up
 
 - **An RPC was being fired before the connection existed.** `join_game`

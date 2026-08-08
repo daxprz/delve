@@ -63,6 +63,17 @@ The cap matters more than it sounds: each body is **11 rigid
 bodies**, so an uncapped graveyard would quietly strangle the frame
 rate over a long fight.
 
+## A test this broke shipped before it was noticed
+
+`smoke_enemy_health` required that lethal damage **removes** the
+enemy — the exact behaviour this story reverses. Like `smoke_health`,
+it needs to host, so it did not run while the operator was playing,
+and v0.1.9 shipped with it failing.
+
+Now inverted: it asserts the enemy is still there AND reports itself
+dead. Written that way round deliberately, so "deleted" fails with a
+message naming this story rather than a bare mismatch.
+
 ## Notes
 
 Found by the operator while playing, not by reading code. It looks

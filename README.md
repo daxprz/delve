@@ -46,6 +46,13 @@ godot --path . -- --client     # window 2
 | `Esc` | Pause (frees the mouse) |
 | `F3` | Debug overlay |
 
+The build you are running is shown small in the **top-right corner**.
+Everyone playing together must be on the same one — there is no
+protocol version check yet, so a mismatched client connects and then
+behaves oddly rather than refusing. The release build fails if that
+number ever disagrees with the tag it was built from, so it cannot
+quietly lie to you.
+
 **Grabber** — `LMB`/`RMB` grab with the left/right arm, `E` switches
 to punch mode (hold a mouse button to ram; punches aim where you
 look), `Q` grapple-zip, `G` throw, `F` pull, `C` guard/parry. Grab
@@ -173,7 +180,7 @@ be toggled independently for on-screen gizmos and text logging, per
 observer. Gizmos include tail hit points and enemy hit-reaction
 arrows.
 
-**Smoke tests** — 62 headless tests:
+**Smoke tests** — 63 headless tests:
 
 ```bash
 godot --headless --path . -s res://tests/smoke_player.gd
