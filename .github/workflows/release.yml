@@ -62,7 +62,7 @@ jobs:
 
           godot --version
 
-      - name: Check the in-game version matches the tag
+      - name: Check the version matches the tag, and stamp the bundles
         # The top-right watermark (STO-UI-007) reads
         # application/config/version. If that drifts from the tag, every
         # download confidently displays the wrong version - which is
@@ -80,6 +80,22 @@ jobs:
             echo "::error::version mismatch: tag v$TAG but project.godot says $IN_GAME"
             exit 1
           fi
+
+          # Stamp the TAG into the bundle metadata rather than trusting
+          # whatever is committed (STO-TOOLS-010). These fields decide
+          # what macOS Get Info and the Windows exe properties report,
+          # and they sat empty for the project's whole life - so every
+          # download claimed to be Godot's default 1.0.0. Deriving them
+          # here means they cannot go stale again: there is nothing to
+          # remember to bump.
+          sed -i \
+            -e "s|^application/short_version=.*|application/short_version=\"$TAG\"|" \
+            -e "s|^application/version=.*|application/version=\"$TAG\"|" \
+            -e "s|^application/file_version=.*|application/file_version=\"$TAG\"|" \
+            -e "s|^application/product_version=.*|application/product_version=\"$TAG\"|" \
+            export_presets.cfg
+          echo "bundle metadata stamped as $TAG:"
+          grep -E "^application/(short_version|version|file_version|product_version)=" export_presets.cfg
 
       - name: Import assets
         # First run builds the .godot import cache. Godot exits non-zero

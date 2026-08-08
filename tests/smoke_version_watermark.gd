@@ -66,6 +66,15 @@ func _physics_process(_d: float) -> bool:
 			_check(canvas.layer > 1,
 					"...drawn above the menu and lobby (layer %d)" % canvas.layer)
 
+		# The BUNDLE metadata must agree too (STO-TOOLS-010).
+		#
+		# These decide what macOS Get Info and the Windows exe
+		# properties report. They sat empty for the project's whole
+		# life, so every download claimed to be Godot's default 1.0.0
+		# while the game itself knew better — found by the operator on
+		# a real download, because nothing here was looking.
+		_check_presets(declared)
+
 		_main = load("res://scenes/main.tscn").instantiate()
 		root.add_child(_main)
 		return false
@@ -89,6 +98,42 @@ func _physics_process(_d: float) -> bool:
 	print("RESULT: %s" % ("PASS" if _failures == 0 else "FAIL (%d)" % _failures))
 	quit(1 if _failures > 0 else 0)
 	return true
+
+
+## Every version field in export_presets.cfg must match the project's
+## version. CI re-stamps these from the tag at build time, but this
+## catches the file drifting in the repo — and, more importantly, ever
+## being blank again, which is what produced "1.0.0".
+func _check_presets(declared: String) -> void:
+	var f := FileAccess.open("res://export_presets.cfg", FileAccess.READ)
+	if f == null:
+		_check(false, "export_presets.cfg is readable")
+		return
+	var text := f.get_as_text()
+	f.close()
+	var fields := [
+		"application/short_version",    # macOS CFBundleShortVersionString
+		"application/version",          # macOS CFBundleVersion
+		"application/file_version",     # Windows exe file version
+		"application/product_version",  # Windows exe product version
+	]
+	for line_key in fields:
+		var found := ""
+		var seen := false
+		for line in text.split("\n"):
+			if line.begins_with(line_key + "="):
+				seen = true
+				found = line.substr(line_key.length() + 1).strip_edges().trim_prefix('"').trim_suffix('"')
+				break
+		if not seen:
+			_check(false, "%s is present in export_presets.cfg" % line_key)
+		elif found == "":
+			_check(false, "%s is EMPTY — that is what makes builds say 1.0.0"
+					% line_key)
+		else:
+			_check(found == declared,
+					"%s matches the project version (%s vs %s)"
+					% [line_key, found, declared])
 
 
 func _finish() -> bool:
