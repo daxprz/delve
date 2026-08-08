@@ -2,10 +2,9 @@
 xid: DES-TOOLS-001
 kind: design
 effort: tools
-status: shipped
+status: open
 date: 2026-08-06
 bd-id: delve-1kv
-shipped: 2026-08-06
 ---
 
 # TUMU testing & diagnostics infrastructure

@@ -3,10 +3,9 @@ xid: EPI-TOOLS-RCON-DEBUG
 parent: ../design.md
 kind: epic
 effort: tools
-status: shipped
+status: open
 date: 2026-08-06
 bd-id: delve-ock
-shipped: 2026-08-06
 ---
 
 # RCON server + debug overlay

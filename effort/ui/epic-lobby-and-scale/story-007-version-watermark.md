@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: ui
 size: S
-status: draft
+status: shipped
 date: 2026-08-07
 depends-on: []
 bd-id: delve-6wm
+shipped: 2026-08-07
+tasks: 7
+complete: 7
 ---
 
 # A version watermark in the top-right corner
