@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: tools
 size: S
-status: draft
+status: shipped
 date: 2026-08-07
 depends-on: []
 bd-id: delve-jm0
+shipped: 2026-08-07
+tasks: 5
+complete: 5
 ---
 
 # The app bundle reports the real version, not 1.0.0
@@ -45,14 +48,42 @@ thing an installer would trust and get wrong.
 
 ## Definition of Done
 
-- [ ] `Delve.app` reports 0.1.10 to macOS, not 1.0.0.
-- [ ] The Windows `.exe` reports it too.
-- [ ] The version comes from the **tag**, so it cannot go stale the
-      way this one did — no hand-editing before each release.
-- [ ] A release built from a tag whose version disagrees still fails,
-      as STO-UI-007 established.
-- [ ] Verified by unpacking the built `.app` and reading its
-      `Info.plist`, not by trusting the export settings.
+- [x] `Delve.app` reports its real version to macOS, not 1.0.0.
+- [x] The Windows `.exe` reports it too.
+- [x] The version comes from the **tag** — CI stamps all four fields
+      at build time, so there is nothing to hand-edit or forget.
+- [x] A release built from a mismatched tag still fails
+      (STO-UI-007's guard runs first, in the same step).
+- [x] Verified by unpacking the **published** build, not by trusting
+      the export settings.
+
+## Verification notes (2026-08-08)
+
+Checked against the real download, because the export settings looking
+correct is exactly what was true before this bug existed.
+
+`delve-macos.zip` -> `Delve.app/Contents/Info.plist`:
+
+```
+CFBundleShortVersionString  0.1.11
+CFBundleVersion             0.1.11
+```
+
+`delve-windows.zip` -> `delve.exe` version resource carries
+`FileVersion` / `ProductVersion` with `0.1.11`.
+
+`tests/smoke_version_watermark.gd` now also reads
+`export_presets.cfg` and compares every version field against
+`application/config/version`. Teeth-checked both ways it can break:
+
+| what was done to the field | what the test said |
+|---|---|
+| blanked | *"is EMPTY — that is what makes builds say 1.0.0"* |
+| set to 0.1.9 | *"matches the project version (0.1.9 vs 0.1.11)"* |
+
+Shipped as **0.1.11** rather than rebuilding 0.1.10. That binary was
+already published, and replacing a file under a tag someone may have
+installed is worse than moving forward.
 
 ## Out of scope
 
