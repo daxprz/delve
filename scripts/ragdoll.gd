@@ -53,6 +53,11 @@ const PartScript := preload("res://scripts/ragdoll_part.gd")
 ## contact instead of cleaning up after one.
 
 var _parts: Dictionary = {}  # name -> RigidBody3D
+## Joint that holds each part ONTO its parent, keyed by the child part
+## name. Tearing a limb off is just freeing its joint (STO-ENEMIES-012).
+var _held_by: Dictionary = {}   # child part name -> ConeTwistJoint3D
+## Parts no longer attached to the body.
+var _detached: Dictionary = {}  # part name -> true
 
 
 ## Build parts + joints from the body's current pose. Returns the
@@ -121,8 +126,54 @@ func build_from_body(body: Node3D, mass_scale: float) -> int:
 		joint.global_transform = Transform3D(jb, anchor.global_position)
 		joint.node_a = joint.get_path_to(_parts[jd["a"]])
 		joint.node_b = joint.get_path_to(_parts[jd["b"]])
+		_held_by[jd["b"]] = joint
 
 	return _parts.size()
+
+
+## Tear a part off the body (STO-ENEMIES-012).
+##
+## All that holds a limb on is the joint whose node_b is that part, so
+## taking it off is a matter of freeing that one joint. Anything
+## hanging further down stays attached to what came off — pull an
+## upper arm and the forearm goes with it, which is what you want.
+func detach(part_name: String) -> bool:
+	if not _parts.has(part_name) or _detached.has(part_name):
+		return false
+	var joint: Node = _held_by.get(part_name)
+	if joint == null:
+		return false      # the pelvis: nothing holds it on
+	_held_by.erase(part_name)
+	joint.queue_free()
+	_detached[part_name] = true
+	# A loose limb is just another object in the world. It keeps the
+	# ragdoll layer so it still cannot jostle the parts it fell off.
+	var rb := _parts[part_name] as RigidBody3D
+	rb.angular_damp = 0.6     # tumbles more freely once it is off
+	return true
+
+
+func is_detached(part_name: String) -> bool:
+	return _detached.has(part_name)
+
+
+func detached_count() -> int:
+	return _detached.size()
+
+
+## The part nearest a point — used to work out WHICH limb a blow hit.
+func nearest_part(point: Vector3) -> String:
+	var best := ""
+	var best_d := INF
+	for pname in _parts:
+		var rb := _parts[pname] as RigidBody3D
+		if rb == null or _detached.has(pname):
+			continue
+		var d := rb.global_position.distance_to(point)
+		if d < best_d:
+			best_d = d
+			best = pname
+	return best
 
 
 ## Momentum in: every part inherits the enemy's velocity plus the hit

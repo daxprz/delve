@@ -27,8 +27,14 @@ const REST_DOWN := 0.6
 ## TAIL_MIN_SPEED that touches an enemy deals damage scaled by its speed.
 const TAIL_MIN_SPEED := 5.0
 const TAIL_HIT_RADIUS := 0.75
-const TAIL_DAMAGE_SCALE := 0.9
-const TAIL_DAMAGE_CAP := 40.0
+## Damage turned DOWN (STO-CHARACTER-052). It was 0.9 scale / 40 cap,
+## which against a 60-health enemy meant two decent whips killed
+## anything in the game and a fast one nearly did it alone — so there
+## was no reason to use anything else the Runner has, and no fight
+## lasted long enough to be interesting. The tail still TRIPS and
+## RAGDOLLS exactly as hard as before; only the damage changed.
+const TAIL_DAMAGE_SCALE := 0.35
+const TAIL_DAMAGE_CAP := 15.0
 const TAIL_HIT_COOLDOWN := 0.35   # per-enemy, so one swing = one hit
 ## A swipe faster than this TRIPS the enemy — it falls over and
 ## tumbles (STO-ENEMIES-004). Roughly double the damage threshold.

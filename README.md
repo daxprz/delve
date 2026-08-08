@@ -48,7 +48,9 @@ godot --path . -- --client     # window 2
 
 **Grabber** — `LMB`/`RMB` grab with the left/right arm, `E` switches
 to punch mode (hold a mouse button to ram; punches aim where you
-look), `Q` grapple-zip, `G` throw, `F` pull, `C` guard/parry.
+look), `Q` grapple-zip, `G` throw, `F` pull, `C` guard/parry. Grab
+something that *can't* move and it hauls you to it; grab a crate and
+the crate stays put, so a throw launches from a standing start.
 
 **Runner** — hold `Space` to pounce (15 s cooldown, *refunded if you
 hit something*), `C` dodge roll, and a tail that damages and trips
@@ -118,6 +120,37 @@ and a hard one ragdolls.
 
 ---
 
+## Fighting back
+
+Enemies hurt you now. A swing is slow and readable — the enemy plants
+its feet, rears back, and only then lands the blow — so being hit is
+always something you could have stepped out of. Guard and it costs a
+quarter as much; dodge-roll and it costs nothing. It cannot reach you
+through a wall.
+
+Hit one hard enough in the right place and **the part comes off**, and
+what you took decides what it can still do:
+
+| you take | what happens |
+|---|---|
+| its **head** | dead on the spot, however much health it had |
+| **one leg** | it can only limp after you, at 40% speed |
+| **both legs** | dead |
+| **one arm** | its hits drop from 12 damage to 4 |
+| **both arms** | it cannot hurt you at all — but it still follows you around |
+
+That last one is the best of them: an armless enemy isn't dead, it's
+*defeated*, and it trails after you unable to do a thing about it.
+
+A limb has to be knocked off a body that is already down, and it takes
+a genuinely brutal blow — roughly twice what it takes to floor one, so
+an ordinary scuffle never dismantles anything. The limb drops as a
+real physics object and stays where it lands. So do the bodies:
+**a defeated enemy leaves a corpse** you can still whip, punch and
+shove around, instead of vanishing the instant it dies.
+
+---
+
 ## Testing (TUMU)
 
 The game is built to be inspected without looking at the screen.
@@ -140,7 +173,7 @@ be toggled independently for on-screen gizmos and text logging, per
 observer. Gizmos include tail hit points and enemy hit-reaction
 arrows.
 
-**Smoke tests** — 55 headless tests:
+**Smoke tests** — 62 headless tests:
 
 ```bash
 godot --headless --path . -s res://tests/smoke_player.gd

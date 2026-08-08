@@ -3,10 +3,9 @@ xid: EPI-CHARACTER-MECHANICAL-ARMS
 parent: ../design.md
 kind: epic
 effort: character
-status: shipped
+status: in-progress
 date: 2026-08-03
 bd-id: delve-utv
-shipped: 2026-08-03
 ---
 
 # Mechanical grabber arms

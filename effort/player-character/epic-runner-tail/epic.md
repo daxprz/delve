@@ -3,7 +3,7 @@ xid: EPI-CHARACTER-RUNNER-TAIL
 parent: ../design.md
 kind: epic
 effort: character
-status: open
+status: in-progress
 date: 2026-08-03
 bd-id: delve-401
 ---

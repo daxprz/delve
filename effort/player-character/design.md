@@ -2,7 +2,7 @@
 xid: DES-CHARACTER-001
 kind: design
 effort: character
-status: open
+status: in-progress
 date: 2026-08-03
 bd-id: delve-85y
 ---

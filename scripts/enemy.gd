@@ -69,6 +69,31 @@ var _stability := 1.0           # resistance to being knocked down
 var _stagger := 0.0
 var _health := MAX_HEALTH
 var _carried := false
+# Limbs (EPI-ENEMIES-ENEMY-LIMBS). A limb is a friendly name for the
+# ragdoll part it hangs off; taking the part off takes everything
+# below it too (an upper arm brings its forearm).
+const LIMBS := {
+	"head": "Head",
+	"arm_l": "UpperArmL",
+	"arm_r": "UpperArmR",
+	"leg_l": "ThighL",
+	"leg_r": "ThighR",
+}
+## How hard a blow has to be to tear a limb off. Well above
+## KNOCKDOWN_DV (7.5): knocking something over is common, pulling it
+## apart should not be.
+const DISMEMBER_DV := 14.0
+## Losing one leg leaves a limp, not a kill (STO-ENEMIES-014).
+const ONE_LEG_SPEED := 0.40
+## Losing one arm guts the damage; losing both means it cannot hurt
+## you at all, though it will still follow you around (STO-ENEMIES-015).
+const ONE_ARM_DAMAGE := 0.35
+var _lost: Array = []           # limb keys already torn off
+## Corpses (STO-ENEMIES-016): a dead enemy leaves its ragdoll behind
+## instead of vanishing. Capped, because each body is 11 rigid parts.
+const MAX_CORPSES := 8
+var _dead := false
+
 var _windup := 0.0              # >0 while rearing back to strike
 var _attack_cd := 0.0           # rest timer between swings
 var _swings := 0                # how many blows landed (tests read this)
@@ -232,8 +257,9 @@ func _physics_process(delta: float) -> void:
 			to.y = 0.0
 			if to.length() > 0.6:  # stop when basically on top of them
 				var dir := to.normalized()
-				velocity.x = dir.x * SPEED
-				velocity.z = dir.z * SPEED
+				var spd := _move_speed()
+				velocity.x = dir.x * spd
+				velocity.z = dir.z * spd
 				look_at(global_position + dir, Vector3.UP)
 			else:
 				velocity.x = 0.0
@@ -314,7 +340,88 @@ func _land_blow() -> void:
 ## How hard this enemy hits. A plain enemy hits for ATTACK_DAMAGE;
 ## STO-ENEMIES-015 reduces it as arms are torn off.
 func attack_damage() -> float:
-	return ATTACK_DAMAGE
+	match arms_left():
+		2: return ATTACK_DAMAGE
+		1: return ATTACK_DAMAGE * ONE_ARM_DAMAGE
+		_: return 0.0   # no arms: it still chases, but it is harmless
+
+
+# --- Limbs (EPI-ENEMIES-ENEMY-LIMBS) ----------------------------------
+
+## Tear a limb off (STO-ENEMIES-012). Only works while ragdolled — a
+## standing enemy keeps all its parts.
+func tear_off_limb(limb: String) -> bool:
+	if not LIMBS.has(limb) or _lost.has(limb):
+		return false
+	if _ragdoll == null:
+		return false
+	if not bool(_ragdoll.call("detach", LIMBS[limb])):
+		return false
+	_lost.append(limb)
+	DebugOverlay.log("enemy/combat", self, "%s: lost its %s", [name, limb])
+	Sounds.make(global_position, Sounds.RAGDOLL_LANDING)
+	_on_limb_lost(limb)
+	return true
+
+
+## Which limbs are gone.
+func lost_limbs() -> Array:
+	return _lost.duplicate()
+
+
+func has_limb(limb: String) -> bool:
+	return LIMBS.has(limb) and not _lost.has(limb)
+
+
+## Legs still attached (STO-ENEMIES-014 reads this).
+func legs_left() -> int:
+	return (1 if has_limb("leg_l") else 0) + (1 if has_limb("leg_r") else 0)
+
+
+## Arms still attached (STO-ENEMIES-015 reads this).
+func arms_left() -> int:
+	return (1 if has_limb("arm_l") else 0) + (1 if has_limb("arm_r") else 0)
+
+
+## What losing a limb DOES.
+func _on_limb_lost(limb: String) -> void:
+	# Head off = dead on the spot, however much health is left
+	# (STO-ENEMIES-013). This is the payoff for aiming high: a rifle
+	# shot or a full-power whip to the head ends a fight outright.
+	if limb == "head":
+		DebugOverlay.log("enemy/combat", self, "%s: beheaded -> dead", [name])
+		die()
+		return
+	# Both legs gone = dead (STO-ENEMIES-014). One leg is a limp, not a
+	# kill — see _move_speed.
+	if legs_left() == 0:
+		DebugOverlay.log("enemy/combat", self, "%s: both legs gone -> dead",
+				[name])
+		die()
+
+
+## How fast it can chase (STO-ENEMIES-014). Take a leg and it can only
+## limp after you; take both and it is already dead.
+func _move_speed() -> float:
+	match legs_left():
+		2: return SPEED
+		1: return SPEED * ONE_LEG_SPEED
+		_: return 0.0
+
+
+## Which limb owns a ragdoll part, or "" if it is a core part.
+func _limb_for_part(part_name: String) -> String:
+	for limb in LIMBS:
+		if LIMBS[limb] == part_name:
+			return limb
+	# Parts further down a limb count as that limb: hit a forearm and
+	# you have hit the arm.
+	match part_name:
+		"ForearmL": return "arm_l"
+		"ForearmR": return "arm_r"
+		"ShinL": return "leg_l"
+		"ShinR": return "leg_r"
+	return ""
 
 
 ## Blows landed, for tests.
@@ -344,8 +451,17 @@ func _nearest_player() -> Node3D:
 ## Knock the enemy back (called by punch / shockwave / throw / parry).
 ## Momentum transfer: dv = impulse / mass. Delivered dv beyond this
 ## build's stability threshold bowls it over into a tumble.
-func apply_knockback(impulse: Vector3) -> void:
+func apply_knockback(impulse: Vector3, hit_point := Vector3.INF) -> void:
 	var dv := impulse / _mass
+	# A very hard blow on a body that is already down tears the limb
+	# it landed on clean off (STO-ENEMIES-012). Ragdolled only: a
+	# standing enemy keeps all its parts.
+	if _ragdoll != null and dv.length() >= DISMEMBER_DV \
+			and hit_point.is_finite():
+		var part_name: String = _ragdoll.call("nearest_part", hit_point)
+		var limb := _limb_for_part(part_name)
+		if limb != "":
+			tear_off_limb(limb)
 	if _ragdoll != null or dv.length() >= KNOCKDOWN_DV * _stability:
 		# HARD: ragdoll. The dv goes into the ragdoll parts (launch
 		# adds it to our CURRENT velocity) — adding it here too would
@@ -525,17 +641,78 @@ func _exit_ragdoll(instant := false) -> void:
 
 ## Take damage; at 0 health the enemy is defeated (STO-ENEMIES-002).
 func take_damage(amount: float) -> void:
+	if _dead:
+		return          # a corpse cannot be killed twice (STO-ENEMIES-016)
 	_health -= amount
 	# No damage flash (STO-ENEMIES-007): the physical reaction (shove /
 	# stumble / ragdoll) IS the hit feedback; the body keeps its tint.
 	DebugOverlay.log("enemy/combat", self, "%s: -%.0f hp -> %.0f",
 			[name, amount, maxf(_health, 0.0)])
 	if _health <= 0.0:
-		DebugOverlay.log("enemy/combat", self, "%s: defeated", [name])
-		if _ragdoll != null:
-			_ragdoll.queue_free()  # don't orphan the physics parts
-			_ragdoll = null
-		queue_free()
+		die()
+
+
+## Die, and LEAVE A BODY (STO-ENEMIES-016).
+##
+## This used to free the ragdoll and then free the enemy, so a defeated
+## enemy popped out of existence mid-fight. Everything delve has built
+## for physical fighting — the Grabber's arms, the Runner's tail,
+## throwing, dragging — stopped working the instant a thing died.
+##
+## Now the ragdoll stays as a corpse: still a real physics object, still
+## shoveable, but no longer anything that chases, swings or stands up.
+func die() -> void:
+	if _dead:
+		return
+	_dead = true
+	_health = 0.0
+	_windup = 0.0
+	DebugOverlay.log("enemy/combat", self, "%s: defeated", [name])
+	if _ragdoll == null:
+		# Killed while still on its feet — it needs a body to leave.
+		_knockdown(Vector3(0.0, 1.0, 0.0), false)
+	if _ragdoll == null:
+		queue_free()      # body could not be built; nothing to leave
+		return
+	# It must never get back up.
+	_downed = INF
+	_held_ragdoll = false
+	# Stop being a target for other enemies' AI, but STAY in the
+	# "enemies" group so the tail and arms can still hit it about.
+	set_deferred("collision_layer", 0)
+	_reap_old_corpses()
+
+
+func is_dead() -> bool:
+	return _dead
+
+
+## Keep the graveyard from growing forever. Corpses are real physics
+## bodies — eleven of them each — so an endless pile would quietly
+## strangle the frame rate.
+func _reap_old_corpses() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var corpses: Array = []
+	for c in parent.get_children():
+		if c != self and c.has_method("is_dead") and bool(c.call("is_dead")):
+			corpses.append(c)
+	# Oldest first: children keep their spawn order.
+	while corpses.size() >= MAX_CORPSES:
+		var oldest: Node = corpses.pop_front()
+		DebugOverlay.log("enemy/combat", self, "reaping old corpse %s",
+				[oldest.name])
+		if oldest.has_method("free_corpse"):
+			oldest.call("free_corpse")
+
+
+## Remove this corpse and its physics parts.
+func free_corpse() -> void:
+	if _ragdoll != null:
+		_ragdoll.queue_free()
+		_ragdoll = null
+	queue_free()
 
 
 ## Carried by the Flyer (STO-CHARACTER-024): freeze AI/gravity while held.

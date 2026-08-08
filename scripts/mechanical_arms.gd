@@ -47,7 +47,6 @@ const GRAB_REACH_LERP := 0.18
 
 # --- Grab tuning ---
 const GRAB_REACH := 3.0        # how far a hand can reach to grab (short reach)
-const REEL_IMPULSE := 0.5      # how strongly a grabbed box is pulled to the hand
 ## Grabbing something solid hauls the player toward it (a real
 ## grapple) — acceleration in m/s^2, and how close counts as arrived.
 const SELF_PULL := 26.0
@@ -353,13 +352,17 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 		return
 
 	if body != null and is_instance_valid(body) and body is RigidBody3D:
-		# Grabbed a movable body (the box): reel it toward the hand, and
-		# keep the visual hand stuck to it.
-		var bpos: Vector3 = body.global_position
-		arm["target"] = bpos
-		var to_hand := shoulder - bpos
-		if to_hand.length() > 0.6:
-			body.apply_central_impulse(to_hand.normalized() * REEL_IMPULSE)
+		# Grabbed a loose body (a crate): LEAVE IT WHERE IT IS
+		# (STO-CHARACTER-053). The arm stretches out to reach it and the
+		# crate launches from there.
+		#
+		# It used to be reeled toward the shoulder by an impulse every
+		# tick, so it accelerated at the player, overshot, bounced off
+		# and got yanked back — never settling. Whatever speed it
+		# happened to carry at the moment of release was added to the
+		# throw, so the same throw landed somewhere different each time.
+		# Applying no force at all is what makes a throw repeatable.
+		arm["target"] = body.global_position
 		return
 
 	# Grabbed something SOLID (wall, pillar, floor): the arm reels the
@@ -630,7 +633,8 @@ func _ram_damage(delta: float) -> void:
 					var punch_dir := (aim_dir() + Vector3.UP * RAM_KNOCKBACK_LIFT) \
 							.normalized()
 					node.call("apply_knockback", punch_dir
-							* (RAM_KNOCKBACK_BASE + speed * RAM_KNOCKBACK))
+							* (RAM_KNOCKBACK_BASE + speed * RAM_KNOCKBACK),
+							center)   # where the fist landed
 				if speed >= RAM_SHOCKWAVE_SPEED:
 					_spawn_shockwave(center, speed)
 				_ram_cd[eid] = RAM_COOLDOWN

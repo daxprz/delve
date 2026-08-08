@@ -123,8 +123,8 @@
       "titleBar.inactiveForeground": "#e7e7e799"
     },
     "ccc.delegates.pinned": [
-      "delve-ember",
-      "delve-ccc"
+      "delve-ccc",
+      "delve-ember"
     ]
   },
 

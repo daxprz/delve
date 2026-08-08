@@ -1,6 +1,14 @@
 extends SceneTree
-## Headless smoke test for STO-CHARACTER-003 box-grab (bugfix): grabbing
-## a movable RigidBody reels it toward the player's hand.
+## Headless smoke test for the Grabber holding a loose crate.
+##
+## STO-CHARACTER-003 originally REELED a grabbed crate toward the hand.
+## STO-CHARACTER-053 reversed that on the operator's instruction: the
+## crate must now stay exactly where it is, with the arm stretching out
+## to reach it, so a throw launches from a standing start and lands in
+## the same place every time.
+##
+## This test was inverted deliberately — the requirement changed, the
+## code did not merely drift.
 ## Run with:  godot --headless -s res://tests/smoke_grab_box.gd
 
 const SETTLE := 30
@@ -14,15 +22,19 @@ var _player: CharacterBody3D
 var _arms
 var _box: RigidBody3D
 var _dist_before := 0.0
+var _box_start := Vector3.ZERO
 
 
 func _setup() -> bool:
 	_main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_main)
 	_box = _main.get_node_or_null("Playground/MovableBox") as RigidBody3D
-	_main.host_game()
-	_main.start_game()   # the lobby no longer starts the game for you
-	_player = _main.get_node_or_null("Players/1") as CharacterBody3D
+	# No hosting: nothing here needs a network, and hosting makes this
+	# unrunnable while the operator has the game open on port 7777.
+	var p: CharacterBody3D = load("res://scenes/player.tscn").instantiate()
+	p.name = "1"
+	_main.get_node("Players").add_child(p)
+	_player = p
 	if _player == null or _box == null:
 		_fail("missing player or box")
 		return false
@@ -46,6 +58,7 @@ func _physics_process(_delta: float) -> bool:
 			if _frames >= SETTLE:
 				var sp: Vector3 = _arms.shoulder_point(0)
 				_dist_before = sp.distance_to(_box.global_position)
+				_box_start = _box.global_position
 				_arms.grab_body(0, _box, _box.global_position)
 				if _arms.is_grabbed(0):
 					_pass("grab_body(0, box) engaged")
@@ -64,11 +77,19 @@ func _physics_process(_delta: float) -> bool:
 func _check_reeled() -> void:
 	var sp: Vector3 = _arms.shoulder_point(0)
 	var after := sp.distance_to(_box.global_position)
-	if after < _dist_before - 0.3:
-		_pass("grabbing the box reeled it toward the hand (%.2f -> %.2f m)"
+	# THE POINT (STO-CHARACTER-053): it must NOT come to you.
+	if after > _dist_before - 0.3:
+		_pass("the grabbed crate stays put (%.2f -> %.2f m from the shoulder)"
 				% [_dist_before, after])
 	else:
-		_fail("box was not reeled in (%.2f -> %.2f m)" % [_dist_before, after])
+		_fail("the crate was dragged toward the player (%.2f -> %.2f m)"
+				% [_dist_before, after])
+	# And it must not have wandered off on its own either.
+	var moved := _box_start.distance_to(_box.global_position)
+	if moved < 0.5:
+		_pass("it stayed where it was grabbed (moved %.2f m)" % moved)
+	else:
+		_fail("it drifted %.2f m from where it was grabbed" % moved)
 
 
 func _done() -> bool:

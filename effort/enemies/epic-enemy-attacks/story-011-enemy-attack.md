@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: draft
+status: shipped
 date: 2026-08-07
 depends-on: []
 bd-id: delve-3a2
+shipped: 2026-08-07
+tasks: 6
+complete: 6
 ---
 
 # Enemies attack the player
@@ -63,6 +66,27 @@ a dodge roll takes **none at all**.
 
 Teeth checked by disabling the wall rule: **2 blows went straight
 through the wall**.
+
+### It broke the pounce, in a way worth remembering
+
+The full suite turned up one regression: `smoke_pounce_cooldown`
+failed — a pounce that connected no longer refunded its cooldown.
+
+The cause was not in the attack code at all. Enemies now **stop** to
+wind up, so for the first time you can land *on top of* one instead of
+crashing into it. And `_nearest_enemy` measured origin-to-origin —
+from the player's middle to the enemy's **feet** — while an enemy
+capsule is 1.6 m tall. Perched on its head read as **1.60 m away**
+against a 1.5 m pounce reach. It missed by ten centimetres.
+
+The measurement was always wrong; enemies simply never used to stand
+still long enough for any height to exist between you. Fixed by
+measuring to the enemy's centre.
+
+Found only because the whole suite runs, not just the new tests. The
+probe that settled it printed distance and height every few ticks —
+`dist=1.60 dy=1.59` said "this is entirely vertical" at a glance,
+which no amount of reading the pounce code would have.
 
 ### Multiplayer
 

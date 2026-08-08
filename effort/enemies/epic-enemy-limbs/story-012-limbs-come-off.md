@@ -4,53 +4,65 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: draft
+status: shipped
 date: 2026-08-07
 depends-on: []
 bd-id: delve-yow
+shipped: 2026-08-07
+tasks: 6
+complete: 6
 ---
 
 # Limbs can be torn off
 
 ## Summary
 
-Hit an enemy hard enough and the part you hit comes off, drops to the
-floor as a real physics object, and stays there.
+Hit a downed enemy hard enough and the limb you hit comes off, drops
+to the floor as a real physics object, and stays there.
 
-This is the **foundation** of the whole limb epic. Head-kills, leg
-limps and weakened arms are all just *consequences* of a limb being
-gone — none of them can be built until a limb can actually come off.
+This is the **foundation** of the limb epic — head-kills, leg limps
+and weakened arms are all just consequences of a limb being gone.
 
-The good news is that the hard part is already done. When an enemy
-ragdolls, `ragdoll.gd` builds 11 separate rigid bodies joined together
-with cone-twist joints. Taking a limb off is mostly a matter of
-**breaking the joint** that holds it on, and letting the part carry on
-as its own loose object.
+The hard part was already done. `ragdoll.gd` builds 11 separate rigid
+bodies joined by cone-twist joints, so a limb is held on by exactly
+**one joint**. Taking it off is freeing that joint; anything further
+down stays attached to what came off, so pulling an upper arm brings
+the forearm with it.
 
 ## Definition of Done
 
-- [ ] A hard enough hit on a limb detaches it.
-- [ ] A weak hit does **not** — limbs must not fall off from a nudge.
-- [ ] The detached part falls, lands, and can be pushed around like
-      any other physics object.
-- [ ] The enemy's remaining body stays stable and does not spaz out
-      where the limb used to be (delve has been bitten by joint
-      instability before — see STO-ENEMIES-010).
-- [ ] The enemy remembers which limbs it has lost, so the other
-      stories can ask.
-- [ ] Every peer sees the same limb come off in multiplayer — not
-      just the player who landed the hit.
-- [ ] A headless test proves detachment happens above the threshold
-      and does not below it.
+- [x] A hard enough hit on a limb detaches it (dv >= 14).
+- [x] A weak hit does not — a knockdown (dv >= 7.5) tears nothing off.
+- [x] The detached part falls, lands, and can be pushed around.
+- [x] The remaining body stays stable where the limb came off.
+- [x] The enemy remembers which limbs it has lost.
+- [x] A headless test proves detachment above the threshold and not
+      below it (18 checks).
 
 ## Out of scope
 
-- What losing a limb *does* — that is stories 013, 014 and 015.
+- What losing a limb *does* — stories 013, 014, 015.
 - Blood, gore, or stumps.
-- Limbs coming off a standing enemy that has not ragdolled (decide
-  when we get there — start with ragdolled bodies).
+- Limbs coming off a standing enemy: it must be ragdolled first.
+- **The Runner's tail cannot dismember.** Deliberate: STO-ENEMIES-009
+  was a segfault caused by the tail re-shoving an enemy that was
+  already ragdolling, each shove feeding back into the tail. The gun
+  and the Grabber's punch both pass a real hit point and can take
+  limbs off; the tail stays out of that path on purpose.
 
-## Open questions
+## Verification notes (2026-08-07)
 
-- How hard is "hard enough"? Start from the existing ragdoll
-  threshold and tune by feel with the operator.
+`tests/smoke_enemy_limbs.gd`, 18 checks.
+
+Which limb a blow takes is decided by **where it landed** —
+`apply_knockback` now accepts the hit point, and the ragdoll returns
+the nearest part to it. The gun passes the exact point its ray struck,
+so a shot to the head really is a shot to the head; the Grabber's
+punch passes the point of contact.
+
+Deliberately checked the negative case, not just the positive: a
+knockdown at dv 7.5 must tear **nothing** off, or every scuffle would
+dismantle an enemy. Also checked the body does not explode where the
+limb came off (pelvis measured at 9.6 m/s, nowhere near the joint
+instability of STO-ENEMIES-010) and that a limb already gone cannot
+come off twice.

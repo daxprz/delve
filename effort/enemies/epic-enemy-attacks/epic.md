@@ -3,9 +3,10 @@ xid: EPI-ENEMIES-ENEMY-ATTACKS
 parent: ../design.md
 kind: epic
 effort: enemies
-status: open
+status: shipped
 date: 2026-08-07
 bd-id: delve-8h1
+shipped: 2026-08-07
 ---
 
 # Enemies fight back
@@ -29,13 +30,13 @@ to reduce.
 
 ## Definition of Done
 
-- [ ] An enemy close enough to a player can hurt it.
-- [ ] There is a wind-up you can see coming, so a hit is avoidable
-      rather than unfair.
-- [ ] Blocking and dodge-rolling work against it (they already exist
-      and have never been tested against a real attacker).
-- [ ] An attack cannot land through a wall.
-- [ ] Proven by a headless test.
+- [x] An enemy close enough to a player can hurt it (12 damage).
+- [x] There is a wind-up you can see coming, so a hit is avoidable
+      rather than unfair (0.55 s, feet planted).
+- [x] Blocking works (3.0 vs 12.0) and dodge-rolling works (no damage
+      at all) — neither had ever been tested against a real attacker.
+- [x] An attack cannot land through a wall.
+- [x] Proven by a headless test (9 checks).
 
 ## Stories
 

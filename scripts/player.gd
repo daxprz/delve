@@ -462,7 +462,9 @@ func fire_gun() -> void:
 		echo.call("emit_blast", point, GUN_IMPACT_RADIUS)
 	if target != null and target.has_method("take_damage"):
 		if target.has_method("apply_knockback"):
-			target.call("apply_knockback", aim * GUN_KNOCKBACK)
+			# `point` is where the bullet actually struck, so a shot to
+			# the head can take the head off (STO-ENEMIES-012).
+			target.call("apply_knockback", aim * GUN_KNOCKBACK, point)
 		deal_damage(target, GUN_DAMAGE)
 		DebugOverlay.log("player/abilities", self, "%s: gunshot hit %s",
 				[name, target.name])
@@ -1146,6 +1148,19 @@ func _nearest_grabbable(reach: float) -> Node:
 	return best
 
 
+## Measured to the enemy's MIDDLE, not its origin.
+##
+## An enemy's origin sits at its feet while its capsule is 1.6 m tall,
+## so measuring origin-to-origin overstates the distance badly whenever
+## there is any height between you — standing on an enemy's head reads
+## as 1.6 m away, which is further than a pounce can reach.
+##
+## That went unnoticed until enemies learned to stop and wind up an
+## attack (STO-ENEMIES-011): before that they walked right into you and
+## there was never any height to get wrong. Suddenly you could land ON
+## one, and a pounce that visibly connected refused to count.
+const ENEMY_CENTRE_Y := 0.8
+
 func _nearest_enemy(reach: float) -> Node:
 	var best: Node = null
 	var best_d := reach
@@ -1153,7 +1168,8 @@ func _nearest_enemy(reach: float) -> Node:
 		var node := e as Node3D
 		if node == null:
 			continue
-		var d := global_position.distance_to(node.global_position)
+		var d := global_position.distance_to(
+				node.global_position + Vector3.UP * ENEMY_CENTRE_Y)
 		if d < best_d:
 			best_d = d
 			best = node

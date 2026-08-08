@@ -2,9 +2,10 @@
 xid: DES-ENEMIES-001
 kind: design
 effort: enemies
-status: open
+status: shipped
 date: 2026-08-03
 bd-id: delve-pne
+shipped: 2026-08-07
 ---
 
 # Enemies

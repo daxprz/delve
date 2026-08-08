@@ -3,9 +3,10 @@ xid: EPI-ENEMIES-ENEMY-LIMBS
 parent: ../design.md
 kind: epic
 effort: enemies
-status: open
+status: shipped
 date: 2026-08-07
 bd-id: delve-r2t
+shipped: 2026-08-07
 ---
 
 # Enemies can lose limbs
@@ -30,13 +31,13 @@ need to come off already exist — nothing has to be re-modelled.
 
 ## Definition of Done
 
-- [ ] A limb can be knocked off an enemy and falls as a real physics
+- [x] A limb can be knocked off an enemy and falls as a real physics
       object.
-- [ ] Losing the head kills instantly.
-- [ ] Losing one leg slows it down; losing both kills it.
-- [ ] Losing one arm weakens its attack; losing both means it cannot
-      damage you.
-- [ ] Every rule above is proven by a headless test, not by eye.
+- [x] Losing the head kills instantly.
+- [x] Losing one leg slows it down (to 40%); losing both kills it.
+- [x] Losing one arm weakens its attack (12.0 -> 4.2); losing both
+      means it cannot damage you at all.
+- [x] Every rule above is proven by a headless test, not by eye.
 
 ## Stories
 
@@ -45,7 +46,7 @@ need to come off already exist — nothing has to be re-modelled.
 | 012 | limbs-come-off | M | the mechanic — **everything else waits on this** |
 | 013 | head-instant-kill | S | head off = dead |
 | 014 | leg-loss | S | one leg slower, two legs dead |
-| 015 | arm-loss | S | needs enemies to attack first (STO-ENEMIES-011) |
+| 015 | arm-loss | S | needed STO-ENEMIES-011 first |
 
 ## Out of scope
 
