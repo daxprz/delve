@@ -16,6 +16,8 @@ var _main: Node
 var _grabber: CharacterBody3D
 var _enemy: CharacterBody3D
 var _slow_len := 0.0
+var _piston_arms
+var _apart_grab := 0.0
 
 
 func _fire(charge: float) -> void:
@@ -48,6 +50,25 @@ func _physics_process(_d: float) -> bool:
 					"F locks the arms into a piston")
 			_check(_grabber.call("piston_shaft") == null,
 					"no shaft until it is fired")
+			_piston_arms = _grabber.get_node_or_null("MechanicalArms")
+			_apart_grab = float(_piston_arms.call("hand_point", 0)
+					.distance_to(_piston_arms.call("hand_point", 1)))
+			_check(_apart_grab > 0.3,
+					"in grab mode the two hands are apart (%.3f m)"
+					% _apart_grab)
+			_next("join")
+		"join":
+			# THE HANDS COMBINE (STO-CHARACTER-070): both arms are drawn
+			# to one point so they lock into a single shaft, instead of
+			# the piston appearing out of thin air beside two dangling
+			# arms.
+			if _ticks < 45:
+				return false
+			var apart := float(_piston_arms.call("hand_point", 0)
+					.distance_to(_piston_arms.call("hand_point", 1)))
+			_check(apart < 0.15,
+					"in piston mode the hands COMBINE into one (%.3f m, was %.3f)"
+					% [apart, _apart_grab])
 			_next("slow")
 		"slow":
 			# A WEAK charge: the shaft still fires, just slowly.

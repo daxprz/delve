@@ -15,6 +15,9 @@ extends AnimatableBody3D
 ## everything.
 
 const THICKNESS := 0.34
+## The fixed barrel at the base, and the flat face on the end.
+const HOUSING_LEN := 0.55
+const HEAD_LEN := 0.18
 const HIT_RADIUS := 0.9
 ## Full charge fires at 1.25x the Runner\'s pounce (POUNCE_FORWARD 7.5).
 const FULL_SPEED := 9.375
@@ -36,6 +39,7 @@ var _age := 0.0
 var _owner_player: Node3D
 var _hit: Dictionary = {}          # instance id -> true, so one hit each
 var _mesh: MeshInstance3D
+var _head: MeshInstance3D
 var _shape: CollisionShape3D
 
 
@@ -51,12 +55,54 @@ func setup(from: Node3D, dir: Vector3, charge01: float) -> void:
 	mat.metallic = 0.9
 	mat.roughness = 0.3
 
+	# An actual piston shape (STO-CHARACTER-071), not a growing box:
+	#
+	#   [==housing==]======rod======[HEAD]
+	#    fixed barrel  thin, extends  wide face
+	#
+	# Cylinders are built along Y in Godot while the shaft runs along
+	# +Z, so each one is turned a quarter turn about X.
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.28, 0.30, 0.34)
+	dark.metallic = 1.0
+	dark.roughness = 0.45
+
+	# The barrel: fixed length, sits at the base and never grows.
+	var housing := MeshInstance3D.new()
+	housing.name = "Housing"
+	var hc := CylinderMesh.new()
+	hc.top_radius = THICKNESS * 0.62
+	hc.bottom_radius = THICKNESS * 0.62
+	hc.height = HOUSING_LEN
+	housing.mesh = hc
+	housing.material_override = dark
+	housing.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+	housing.position = Vector3(0.0, 0.0, HOUSING_LEN * 0.5)
+	add_child(housing)
+
+	# The rod: thin, bright, and the part that extends.
 	_mesh = MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(THICKNESS, THICKNESS, 0.1)
-	_mesh.mesh = box
+	_mesh.name = "Rod"
+	var rod := CylinderMesh.new()
+	rod.top_radius = THICKNESS * 0.30
+	rod.bottom_radius = THICKNESS * 0.30
+	rod.height = 0.1
+	_mesh.mesh = rod
 	_mesh.material_override = mat
+	_mesh.rotation = Vector3(PI * 0.5, 0.0, 0.0)
 	add_child(_mesh)
+
+	# The head: a wide flat face that does the shoving.
+	_head = MeshInstance3D.new()
+	_head.name = "Head"
+	var hd := CylinderMesh.new()
+	hd.top_radius = THICKNESS * 0.85
+	hd.bottom_radius = THICKNESS * 0.85
+	hd.height = HEAD_LEN
+	_head.mesh = hd
+	_head.material_override = dark
+	_head.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+	add_child(_head)
 
 	_shape = CollisionShape3D.new()
 	var bs := BoxShape3D.new()
@@ -86,9 +132,13 @@ func _physics_process(delta: float) -> void:
 ## rather than sliding along.
 func _reshape() -> void:
 	var l: float = maxf(_length, 0.05)
-	(_mesh.mesh as BoxMesh).size = Vector3(THICKNESS, THICKNESS, l)
-	(_shape.shape as BoxShape3D).size = Vector3(THICKNESS, THICKNESS, l)
+	# Only the ROD grows; the housing stays put and the head rides on
+	# the end of the rod, which is what makes it read as a piston
+	# rather than a stretching block.
+	(_mesh.mesh as CylinderMesh).height = l
 	_mesh.position = Vector3(0.0, 0.0, l * 0.5)
+	_head.position = Vector3(0.0, 0.0, l)
+	(_shape.shape as BoxShape3D).size = Vector3(THICKNESS, THICKNESS, l)
 	_shape.position = Vector3(0.0, 0.0, l * 0.5)
 
 

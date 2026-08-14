@@ -494,6 +494,17 @@ func _simulate_arm(arm: Dictionary, delta: float) -> void:
 		if arm["grabbed_body"] != null and is_instance_valid(arm["grabbed_body"]):
 			reach_lerp = CARRY_REACH_LERP
 		pts[last] += (target - pts[last]) * reach_lerp
+	elif _mode == MODE_PISTON:
+		# PISTON MODE: both hands are pulled to the SAME point, so the
+		# two arms visibly converge and lock together into one shaft
+		# (STO-CHARACTER-070). Without this the piston appeared out of
+		# thin air while the arms carried on dangling separately.
+		var joined := _piston_point()
+		pts[last] += (joined - pts[last]) * PISTON_JOIN_LERP
+		# Pull the elbow inward too, or the arms meet at the hands
+		# while their middles still bow out to the sides.
+		var elbow := _shoulder_world(int(arm["side"])).lerp(joined, 0.5)
+		pts[last - 1] += (elbow - pts[last - 1]) * PISTON_JOIN_LERP * 0.6
 	elif _punch_mode and arm["extended"]:
 		# Punch mode: the arms hang loose at your sides — no raised
 		# guard pose (STO-CHARACTER-031). Only while the button is HELD
@@ -1034,10 +1045,23 @@ func _update_fist_look() -> void:
 ## The piston used to be a separate F toggle sitting ON TOP of grab
 ## mode, so the arms were somehow gripping and pistoning at once. It is
 ## a proper mode: while it is on, the arms neither grab nor punch.
+## How firmly the hands are drawn together in piston mode, and how far
+## in front of the chest they meet.
+const PISTON_JOIN_LERP := 0.35
+const PISTON_JOIN_DIST := 1.05
 const MODE_GRAB := 0
 const MODE_PUNCH := 1
 const MODE_PISTON := 2
 var _mode := MODE_GRAB
+
+
+## Where both hands meet to form the shaft: dead centre, in front of
+## the player, at the height the piston fires from.
+func _piston_point() -> Vector3:
+	if _player == null:
+		return Vector3.ZERO
+	var mid := (_shoulder_world(-1) + _shoulder_world(1)) * 0.5
+	return mid + aim_dir().normalized() * PISTON_JOIN_DIST
 
 
 func toggle_mode() -> void:
