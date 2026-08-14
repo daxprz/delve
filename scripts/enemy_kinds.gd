@@ -27,9 +27,9 @@ const LIST: Array = [
 		"id": "crawler",
 		"name": "Crawler",
 		"body": "quadruped",      # four legs, a block for a body
-		"health": 45.0,
-		"speed": 4.2,             # scuttles - quicker than the Walker
-		"damage": 9.0,
+		"health": 120.0,          # giant: takes real killing
+		"speed": 1.6,             # LUMBERS — slower than the Walker's 3.0
+		"damage": 18.0,
 		"colour": Color(0.35, 0.55, 0.30),
 	},
 ]

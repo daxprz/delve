@@ -20,10 +20,21 @@ const LEGS: Array = [
 	{"n": "LegBR", "x":  1.0, "z":  1.0, "pair": 0},
 ]
 
-const SEGMENTS := 2          # thigh + shin, so a leg can bend
-const STEP_RATE := 2.6       # strides per second at full pelt
-const STEP_LIFT := 0.16      # how high a foot rises mid-step
-const STEP_REACH := 0.22     # how far it swings forward
+## THREE segments (STO-ENEMIES-021), so a leg goes DOWN off the body,
+## then UP to the knee, then DOWN to the floor — the real spider shape.
+## Two segments could only go out-and-up then down, which reads as a
+## bent stick rather than a leg hanging off a body.
+const SEGMENTS := 3
+## Each segment's share of the leg, body outward.
+const SEGMENT_FRACTIONS: Array = [0.22, 0.36, 0.42]
+## Cumulative angle of each segment from straight-down, in radians.
+## Direction is (sin, -cos), so under 90 degrees points DOWN and over
+## 90 points UP: 0.70 down, 2.20 up, 0.15 down again.
+const SEGMENT_ANGLES: Array = [0.70, 2.20, 0.15]
+## A giant lumbers: fewer, longer strides (STO-ENEMIES-021).
+const STEP_RATE := 0.85      # was 2.6 — slow, deliberate
+const STEP_LIFT := 0.20
+const STEP_REACH := 0.55     # was 0.22 — big steps
 
 # --- Spider silhouette (STO-ENEMIES-019) -----------------------------
 ## How far the first segment swings OUT to the side, and UP. A spider's
@@ -34,7 +45,7 @@ const STEP_REACH := 0.22     # how far it swings forward
 ## thing looks like a table. At 2.05 rad (117) the first segment points
 ## out AND up, putting the knee above the block — the bent-over
 ## silhouette that reads as a spider.
-const LEG_SPLAY := 2.05
+const LEG_SPLAY := 2.05  # kept for reference; SEGMENT_ANGLES rules now
 ## The knee folds back further than the leg splayed, so the lower
 ## segment comes down past vertical and the foot reaches the floor
 ## well outside the body.
@@ -70,8 +81,8 @@ func _ready() -> void:
 	_body_size = Vector3(0.40 * bulk, 0.24 * bulk, 0.52 * bulk)
 	# TOWERING (STO-ENEMIES-020): long enough that its body rides
 	# above head height and you walk underneath it.
-	_leg_len = 4.80 * lanky
-	_leg_th = 0.15 * bulk
+	_leg_len = 7.00 * lanky
+	_leg_th = 0.30 * bulk        # thick enough to carry something giant
 
 	_mat = StandardMaterial3D.new()
 	_mat.albedo_color = base_color
@@ -104,15 +115,13 @@ func _build_body() -> void:
 ## sit with its feet still on the floor. Choosing a height instead
 ## leaves the feet floating above the ground or buried in it.
 func _body_height() -> float:
-	var femur := _leg_len * FEMUR_FRACTION
-	var tibia := _leg_len * (1.0 - FEMUR_FRACTION)
-	# Each segment's contribution to the foot's HEIGHT. The femur's is
-	# positive (out and up), the tibia's negative (down to the floor).
-	# The body must sit exactly as high as their sum drops, or the feet
-	# float above the ground / sink through it.
-	var knee_rise := femur * -cos(LEG_SPLAY)
-	var tibia_fall := tibia * -cos(LEG_SPLAY - KNEE_FOLD)
-	return maxf(-(knee_rise + tibia_fall), 0.2)
+	# Sum every segment's contribution to the foot's HEIGHT, then sit
+	# exactly that high — otherwise the feet float above the floor or
+	# sink through it. Derived, never picked.
+	var drop := 0.0
+	for i in SEGMENTS:
+		drop += _leg_len * float(SEGMENT_FRACTIONS[i]) * -cos(float(SEGMENT_ANGLES[i]))
+	return maxf(-drop, 0.2)
 
 
 func _build_leg(def: Dictionary) -> void:
@@ -123,27 +132,31 @@ func _build_leg(def: Dictionary) -> void:
 			side * _body_size.x * 0.5,
 			_body_height(),
 			float(def["z"]) * _body_size.z * 0.42)
-	# Out to the side and tilted UP, so the knee ends above the body.
-	# NOTE the sign: +side. Negated, the legs splayed INWARD and
-	# crossed under the body.
-	root.rotation = Vector3(0.0, 0.0, side * LEG_SPLAY)
 	add_child(root)
 
-	var femur := _leg_len * FEMUR_FRACTION
-	var tibia := _leg_len * (1.0 - FEMUR_FRACTION)
-	var upper := _make_segment("Upper", femur)
-	root.add_child(upper)
-	var lower := _make_segment("Lower", tibia)
-	lower.set_meta("side", side)
-	lower.position = Vector3(0.0, -femur, 0.0)
-	# Folds back in the SAME plane as the splay, so the lower segment
-	# comes down to the floor instead of swinging off sideways.
-	lower.rotation = Vector3(0.0, 0.0, -side * KNEE_FOLD)
-	upper.add_child(lower)
+	# Each joint's rotation is the CHANGE from the previous segment's
+	# angle, because they are nested — a delta, not the absolute angle.
+	var parent := root
+	var names := ["Upper", "Lower", "Foot"]
+	var prev_angle := 0.0
+	var last: Node3D = null
+	var last_len := 0.0
+	for i in SEGMENTS:
+		var seg_len: float = _leg_len * float(SEGMENT_FRACTIONS[i])
+		var angle: float = float(SEGMENT_ANGLES[i])
+		var joint := _make_segment(String(names[i]), seg_len)
+		joint.rotation = Vector3(0.0, 0.0, side * (angle - prev_angle))
+		if i > 0:
+			joint.position = Vector3(0.0, -last_len, 0.0)
+		parent.add_child(joint)
+		parent = joint
+		prev_angle = angle
+		last = joint
+		last_len = seg_len
 
 	_legs.append({
-		"root": root, "upper": upper, "lower": lower,
-		"pair": int(def["pair"]), "seg": tibia,
+		"root": root, "upper": root.get_node("Upper"), "lower": last,
+		"pair": int(def["pair"]), "seg": last_len,
 	})
 
 

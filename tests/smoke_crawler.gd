@@ -120,6 +120,39 @@ func _physics_process(_d: float) -> bool:
 			_check(above == 4,
 					"all 4 knees rise ABOVE the body (%d of 4, body at %.2f)"
 					% [above, bh])
+			# --- GIANT (STO-ENEMIES-021) ---------------------------
+			# Three segments: DOWN off the body, UP to the knee, DOWN
+			# to the floor. Two could only manage out-up-down.
+			var seg_names := ["Upper", "Lower", "Foot"]
+			var node2: Node3D = _body.get_node_or_null("LegFL")
+			var ys: Array = []
+			for nm3 in seg_names:
+				node2 = node2.get_node_or_null(nm3) as Node3D if node2 != null else null
+				if node2 != null:
+					ys.append(_body.to_local(node2.global_position).y)
+			_check(ys.size() == 3,
+					"each leg has 3 segments (%d)" % ys.size())
+			if ys.size() == 3:
+				var bh0: float = _body.call("body_height")
+				_check(float(ys[1]) < bh0,
+						"the first segment goes DOWN off the body (%.2f vs body %.2f)"
+						% [float(ys[1]), bh0])
+				_check(float(ys[2]) > float(ys[1]),
+						"the second goes UP to the knee (%.2f -> %.2f)"
+						% [float(ys[1]), float(ys[2])])
+			# It LUMBERS: slower than the plain Walker.
+			_check(float(_crawler.call("_move_speed"))
+							< float(_walker.call("_move_speed")),
+					"it moves slower than the Walker (%.1f vs %.1f)"
+					% [float(_crawler.call("_move_speed")),
+					float(_walker.call("_move_speed"))])
+			# And it is far harder to topple.
+			_check(float(_crawler.get("_stability"))
+							> float(_walker.get("_stability")) * 1.5,
+					"it is much sturdier (%.2f vs %.2f)"
+					% [float(_crawler.get("_stability")),
+					float(_walker.get("_stability"))])
+
 			# --- IT TOWERS (STO-ENEMIES-020) -----------------------
 			var bh2: float = _body.call("body_height")
 			# Measured against the PLAYER's real eye height, not a

@@ -172,9 +172,12 @@ func _ready() -> void:
 		# The humanoid's build numbers do not exist on other bodies;
 		# give a quadruped sane physical character and stop.
 		var qs: Vector3 = _body.call("body_size")
-		_mass = clampf(qs.x * qs.z * 5.0, 0.6, 1.3)
+		_mass = clampf(qs.x * qs.z * 5.0, 0.6, 1.3) * 2.4   # giant
 		_com_h = 0.55
-		_stability = 1.15          # four legs are hard to topple
+		# Four huge legs braced wide: it takes a far harder hit to
+		# topple than anything on two (STO-ENEMIES-021). Sturdy, not
+		# invincible — a big enough blow still puts it down.
+		_stability = 3.2
 		_getup_time = GETUP_TIME * (0.75 + 0.5 * _mass)
 		# Hitbox to match: tall enough to reach its body, wide enough
 		# to cover the legs (STO-ENEMIES-020).

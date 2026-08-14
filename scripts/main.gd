@@ -18,8 +18,9 @@ const ENEMY_SPAWNS: Array = [
 	{"at": Vector3(7.0, 1.0, 6.0), "kind": 0},
 	{"at": Vector3(-7.0, 1.0, 5.0), "kind": 0},
 	{"at": Vector3(0.0, 1.0, -12.0), "kind": 0},
-	{"at": Vector3(5.0, 1.0, -6.0), "kind": 1},
-	{"at": Vector3(-5.0, 1.0, -9.0), "kind": 1},
+	# ONE giant spider (STO-ENEMIES-021). It is not a creature you
+	# meet in pairs.
+	{"at": Vector3(6.0, 1.0, -10.0), "kind": 1},
 ]
 
 ## Players arrive spread around a ring rather than stacked on one
