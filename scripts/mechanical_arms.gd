@@ -526,6 +526,16 @@ func _physics_process(delta: float) -> void:
 	# rather than a snap (STO-CHARACTER-073).
 	var want: float = 1.0 if _mode == MODE_PISTON else 0.0
 	_piston_blend = move_toward(_piston_blend, want, PISTON_BLEND_RATE * delta)
+	# Heavy things do not turn on a sixpence: the piston's aim chases
+	# the camera instead of matching it (STO-CHARACTER-073).
+	var goal := aim_dir().normalized()
+	if _piston_blend > 0.01:
+		_piston_aim = _piston_aim.slerp(goal, clampf(PISTON_TURN_LAG * delta, 0.0, 1.0))
+		if _piston_aim.length() < 0.01:
+			_piston_aim = goal
+		_piston_aim = _piston_aim.normalized()
+	else:
+		_piston_aim = goal              # snaps back when not in the mode
 	_update_plate()
 	# The fingers go away in piston mode (STO-CHARACTER-073): the
 	# hands are one machine now, not two hands with digits.
@@ -1012,10 +1022,11 @@ func _attach(arm: Dictionary, col) -> void:
 	arm["grabbed_enemy"] = null
 	if col == null:
 		return
-	if _mode == MODE_PISTON:
-		# Nothing can be grabbed in piston mode (STO-CHARACTER-073).
-		# The mouse buttons charge the piston there, and latching onto
-		# a crate at the same time made no sense at all.
+	if col == _plate:
+		# Never grab your OWN piston (STO-CHARACTER-074). Making the
+		# plate solid put a body directly in front of the player, so
+		# every grab aimed forward latched onto it instead of onto
+		# whatever was beyond.
 		return
 	if col.has_method("ragdoll_now"):
 		var rag: Node3D = col.call("ragdoll_now")
@@ -1052,8 +1063,17 @@ func _aim_ray() -> Dictionary:
 	var from := _camera.global_position
 	var to := from - _camera.global_transform.basis.z * GRAB_REACH
 	var query := PhysicsRayQueryParameters3D.create(from, to)
+	var skip: Array = []
 	if _player != null:
-		query.exclude = [_player.get_rid()]
+		skip.append(_player.get_rid())
+	# Skip our OWN piston plate (STO-CHARACTER-074). It is a solid body
+	# held directly in front of the player, so an aim ray hit it every
+	# single time and nothing beyond it could ever be grabbed — the
+	# player kept grabbing their own piston.
+	var pb := _plate as CollisionObject3D
+	if pb != null:
+		skip.append(pb.get_rid())
+	query.exclude = skip
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 
@@ -1167,10 +1187,19 @@ var _piston_hit: Dictionary = {}
 var _piston_blend := 0.0
 ## The flat plate carried on the front of the joined hands
 ## (STO-CHARACTER-073): a small shield, not a fist.
-const PLATE_W := 0.72
-const PLATE_H := 0.60
-const PLATE_T := 0.11
+## Bigger and chunkier so it reads as a heavy slab of machinery.
+const PLATE_W := 0.95
+const PLATE_H := 0.80
+const PLATE_T := 0.20
+## HOW HEAVY IT FEELS (STO-CHARACTER-073). The piston does not follow
+## your view instantly — it lags and catches up, so swinging round
+## drags the machine after you. This one number is most of what
+## separates a heavy machine from a pose.
+const PISTON_TURN_LAG := 3.0
 var _plate: Node3D
+## The direction the piston is actually pointing, which chases the
+## camera rather than matching it.
+var _piston_aim := Vector3.FORWARD
 const MODE_GRAB := 0
 const MODE_PUNCH := 1
 const MODE_PISTON := 2
@@ -1183,7 +1212,8 @@ func _piston_point() -> Vector3:
 	if _player == null:
 		return Vector3.ZERO
 	var mid := (_shoulder_world(-1) + _shoulder_world(1)) * 0.5
-	return mid + aim_dir().normalized() * (PISTON_JOIN_DIST + _piston_extend)
+	# _piston_aim, NOT aim_dir(): the machine swings after your view.
+	return mid + _piston_aim * (PISTON_JOIN_DIST + _piston_extend)
 
 
 ## E cycles GRAB <-> PUNCH only (STO-CHARACTER-073). The piston has
@@ -1250,7 +1280,7 @@ func _update_piston_stroke(delta: float) -> void:
 		return
 	# The joined HANDS are the head of the piston.
 	var head := _piston_point()
-	var dir := aim_dir().normalized()
+	var dir := _piston_aim
 	for group in ["enemies", "players"]:
 		for n in get_tree().get_nodes_in_group(group):
 			var node := n as Node3D
@@ -1282,15 +1312,25 @@ func _update_plate() -> void:
 	if not _plate.visible:
 		return
 	var at := _piston_point()
-	var fwd := aim_dir().normalized()
+	var fwd := _piston_aim
 	var up := Vector3.UP
 	if absf(fwd.dot(up)) > 0.98:
 		up = Vector3.FORWARD               # looking straight up or down
 	var right := up.cross(fwd).normalized()
 	var real_up := fwd.cross(right).normalized()
-	_plate.global_transform = Transform3D(Basis(right, real_up, fwd), at)
-	# Grows in with the fold, so it does not pop into existence.
-	_plate.scale = Vector3.ONE * maxf(_piston_blend, 0.05)
+	# Scale folded INTO the basis, not assigned afterwards. Setting
+	# .scale on a top_level node rebuilt its transform and dumped the
+	# plate at the world origin — 40 m from the player, which is why it
+	# was invisible in game while every test said "visible = true".
+	var grow: float = maxf(_piston_blend, 0.05)
+	_plate.global_transform = Transform3D(
+			Basis(right * grow, real_up * grow, fwd * grow), at)
+
+
+## How far the piston is currently lagging behind your view, in
+## radians — 0 when it has caught up.
+func piston_turn_lag() -> float:
+	return _piston_aim.angle_to(aim_dir().normalized())
 
 
 func plate_visible() -> bool:
@@ -1427,11 +1467,8 @@ func grabbed_body(i: int) -> Node:
 
 
 func grab_body(i: int, body: Node, point: Vector3) -> void:
-	if _mode == MODE_PISTON:
-		# Blocked HERE as well as in _attach: this is a direct entry
-		# point used by abilities and tests, so guarding only the aim
-		# path left a way in (STO-CHARACTER-073).
-		return
+	if body == _plate:
+		return              # never your own piston (STO-CHARACTER-074)
 	_arms[i]["grabbed"] = true
 	_arms[i]["grabbed_body"] = body
 	_arms[i]["target"] = point

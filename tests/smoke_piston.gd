@@ -19,6 +19,7 @@ var _slow_len := 0.0
 var _piston_arms
 var _apart_grab := 0.0
 var _up_from := Vector3.ZERO
+var _turned := false
 
 
 func _fire(charge: float) -> void:
@@ -86,16 +87,45 @@ func _physics_process(_d: float) -> bool:
 			_check(plate is AnimatableBody3D
 							and (plate as AnimatableBody3D).collision_layer != 0,
 					"the plate is a SOLID body, not decoration")
+			# You CAN grab with the piston (STO-CHARACTER-074) — but
+			# never your own plate. Making it solid put a body directly
+			# in front of the player, so every aim ray hit it and
+			# nothing beyond could be reached at all.
 			var box := _main.get_node_or_null("Playground/MovableBox")
 			if box != null:
 				box.global_position = _grabber.global_position \
 						+ Vector3(0.0, 0.5, -1.5)
 				_piston_arms.call("grab_body", 0, box, box.global_position)
-				_check(not bool(_piston_arms.call("is_grabbed", 0)),
-						"nothing can be grabbed in piston mode")
+				_check(bool(_piston_arms.call("is_grabbed", 0)),
+						"you CAN grab with the piston")
+				_piston_arms.call("release", 0)
+			if plate != null:
+				_piston_arms.call("grab_body", 1, plate,
+						(plate as Node3D).global_position)
+				_check(not bool(_piston_arms.call("is_grabbed", 1)),
+						"but never your OWN piston plate")
+			# HEAVY: the machine lags behind your view instead of
+			# whipping round with it (STO-CHARACTER-073).
+			_grabber.rotation.y += deg_to_rad(90.0)
+			_turned = true
 			_check(apart < 0.15,
 					"in piston mode the hands COMBINE into one (%.3f m, was %.3f)"
 					% [apart, _apart_grab])
+			_next("heavy")
+		"heavy":
+			if _ticks < 4:
+				return false
+			if _ticks == 4:
+				var lag := rad_to_deg(float(_piston_arms.call("piston_turn_lag")))
+				_check(lag > 20.0,
+						"turning drags the machine behind you (%.0f deg of lag)"
+						% lag)
+				return false
+			if _ticks < 120:
+				return false
+			var settled := rad_to_deg(float(_piston_arms.call("piston_turn_lag")))
+			_check(settled < 5.0,
+					"...and it catches up once you stop (%.1f deg)" % settled)
 			_next("slow")
 		"slow":
 			# A WEAK charge drives the arms out slowly.
