@@ -267,16 +267,31 @@ func _physics_process(_d: float) -> bool:
 				for c in get_nodes_in_group("players"):
 					(c as Node).queue_free()
 				return false
-			if _ticks == 40:
+			# Long enough for the limb springs to come to rest before
+			# the sample is taken. The limbs now lag the gait and
+			# overshoot when it stops (STO-ENEMIES-039), so a spider
+			# that has just halted is still swinging for a second or so
+			# — by design. The springs decay with a time constant of
+			# 0.59 s, so reaching a genuine standstill takes about 4 s.
+			# 40 ticks, and then 150, both caught it mid-settle and read
+			# that as jogging on the spot.
+			#
+			# The assertion is unchanged and the tolerance is untouched:
+			# it still has to end up genuinely still.
+			if _ticks == 330:
 				_feet_a = _body.call("foot_positions")
 				return false
-			if _ticks < 60:
+			if _ticks < 350:
 				return false
 			var feet_c: Array = _body.call("foot_positions")
 			var still := true
+			var worst := 0.0
 			for i in mini(_feet_a.size(), feet_c.size()):
-				if (_feet_a[i] as Vector3).distance_to(feet_c[i] as Vector3) > 0.005:
+				var d := (_feet_a[i] as Vector3).distance_to(feet_c[i] as Vector3)
+				worst = maxf(worst, d)
+				if d > 0.005:
 					still = false
+			print("[STILL] worst foot drift %.4f m, enemy speed %.4f, gait_lag %.4f" % [worst, _crawler.velocity.length(), float(_body.call("gait_lag"))])
 			_check(still, "a standing crawler does not jog on the spot")
 			_next("stumble")
 		"stumble":

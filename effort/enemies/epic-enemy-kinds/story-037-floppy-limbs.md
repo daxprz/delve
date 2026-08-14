@@ -4,13 +4,37 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: done
+status: superseded
 date: 2026-08-14
 depends-on: [STO-ENEMIES-030]
 bd-id: delve-fl0p
 ---
 
 # The spider's legs and pincers are floppy
+
+> **NOT ACTUALLY FLOPPY IN PLAY (2026-08-14).** The operator looked at
+> it and said it "isn't flopy in any way". They were right, and this
+> story's own tests said otherwise.
+>
+> Measured on a spider walking normally at its real speed of 1.6 m/s:
+>
+> ```
+> flop = 1.4 deg  ->  0.3  ->  0.1  ->  0.0
+> ```
+>
+> **1.4 degrees at the peak, decaying to nothing.** Invisible.
+>
+> The mechanism below works exactly as written. It is attached to the
+> wrong thing: lag is driven by CHANGES in the body's velocity, and a
+> creature walking in a steady line has none. The tests only ever
+> produced a number because they shoved the spider at **14 m/s** —
+> roughly nine times its walking speed, and something that never
+> happens in play.
+>
+> The DoD was the deeper fault. Every line of it was satisfiable by a
+> mechanism nobody could see, because not one line asked whether the
+> floppiness was **visible while the spider was doing its ordinary
+> thing**. Superseded by STO-ENEMIES-039.
 
 ## Summary
 

@@ -104,6 +104,23 @@ const FLOP_MAX := 0.60
 ## would read as the whole leg rotating rigidly about its socket.
 const FLOP_NEAR := 0.40
 const FLOP_FAR := 1.00
+# --- Limbs lagging their own gait (STO-ENEMIES-039) ------------------
+# Each joint is a damped spring chasing the angle the gait asks for
+# rather than snapping to it. Deliberately UNDERDAMPED, so a limb
+# overshoots when its swing reverses instead of easing neatly in.
+#
+# The far joint is much softer than the near one. That difference is
+# the whole look: the end of a long limb whips along behind the part
+# near the socket, which is what "loose" actually means. Equal
+# stiffness would make the leg lag as one rigid piece.
+const JOINT_STIFF_NEAR := 42.0
+const JOINT_DAMP_NEAR := 6.5
+const JOINT_STIFF_FAR := 21.0
+const JOINT_DAMP_FAR := 3.4
+## Ceiling on how far behind a joint may fall, so a spider spun hard
+## cannot wind a limb round on itself.
+const JOINT_LAG_MAX := 1.4
+
 ## How far a limb hangs when a hit knocks the life out of it.
 const LIMP_DROOP := 0.85
 ## How long it dangles before gathering itself back up.
@@ -354,14 +371,37 @@ func _process(delta: float) -> void:
 		var limp01: float = clampf(_limp / LIMP_TIME, 0.0, 1.0)
 		var live: float = 1.0 - limp01
 		var leg_side: float = float(leg["side"])
-		upper.rotation.x = swing * STEP_REACH * live \
+		# The pose the gait ASKS for. What the leg actually does is a
+		# spring chasing it, below.
+		var want_up_x: float = swing * STEP_REACH * live \
 				+ _flop.y * FLOP_NEAR + limp01 * LIMP_DROOP * 0.35
-		upper.rotation.z = float(leg["rest_z_upper"]) \
+		var want_up_z: float = float(leg["rest_z_upper"]) \
 				+ _flop.x * FLOP_NEAR * leg_side
-		lower.rotation.x = -lift * STEP_LIFT * 4.0 * live \
+		var want_lo_x: float = -lift * STEP_LIFT * 4.0 * live \
 				+ _flop.y * FLOP_FAR + limp01 * LIMP_DROOP
-		lower.rotation.z = float(leg["rest_z_lower"]) \
+		var want_lo_z: float = float(leg["rest_z_lower"]) \
 				+ _flop.x * FLOP_FAR * leg_side
+
+		# THE LIMB LAGS THE POSE IT IS TOLD TO HIT (STO-ENEMIES-039).
+		#
+		# STO-ENEMIES-037 hung floppiness off changes in the BODY's
+		# velocity, which a spider walking in a steady line simply does
+		# not have — it measured 1.4 degrees at peak and decayed to
+		# nothing. The legs, meanwhile, are swinging the entire time it
+		# walks. Trailing THOSE means the floppiness shows up exactly
+		# when the creature is being looked at.
+		#
+		# The far joint is springier than the near one, so the end of
+		# the limb whips behind the part near the socket.
+		upper.rotation.x = _chase(leg, "ux", want_up_x, JOINT_STIFF_NEAR,
+				JOINT_DAMP_NEAR, delta)
+		upper.rotation.z = _chase(leg, "uz", want_up_z, JOINT_STIFF_NEAR,
+				JOINT_DAMP_NEAR, delta)
+		lower.rotation.x = _chase(leg, "lx", want_lo_x, JOINT_STIFF_FAR,
+				JOINT_DAMP_FAR, delta)
+		lower.rotation.z = _chase(leg, "lz", want_lo_z, JOINT_STIFF_FAR,
+				JOINT_DAMP_FAR, delta)
+		leg["want_lx"] = want_lo_x   # for tests: how far behind it runs
 
 
 ## The lag is worked out on the PHYSICS tick, not the render frame.
@@ -437,6 +477,41 @@ func _update_flop(delta: float) -> void:
 
 	if _pincers != null and _pincers.has_method("set_flop"):
 		_pincers.call("set_flop", _flop)
+
+
+## One joint's spring, chasing the angle the gait wants (039).
+##
+## State lives in the leg dictionary under `key`, so each joint keeps
+## its own position and velocity. Returns where the joint actually is,
+## which is behind where it was told to be — and that gap IS the
+## floppiness.
+func _chase(leg: Dictionary, key: String, want: float, stiff: float,
+		damp: float, delta: float) -> float:
+	var pos_key := "p_" + key
+	var vel_key := "v_" + key
+	if not leg.has(pos_key):
+		leg[pos_key] = want     # start settled, not mid-swing
+		leg[vel_key] = 0.0
+	var pos: float = float(leg[pos_key])
+	var vel: float = float(leg[vel_key])
+	vel += ((want - pos) * stiff - vel * damp) * delta
+	pos += vel * delta
+	# Never let a joint fall further behind than this, or a spider spun
+	# hard would wind its own leg round on itself.
+	pos = clampf(pos, want - JOINT_LAG_MAX, want + JOINT_LAG_MAX)
+	leg[pos_key] = pos
+	leg[vel_key] = vel
+	return pos
+
+
+## How far the far joint is currently running behind the pose it was
+## asked for, in radians. This is the number STO-ENEMIES-039 is about.
+func gait_lag() -> float:
+	var worst := 0.0
+	for leg in _legs:
+		if leg.has("p_lx") and leg.has("want_lx"):
+			worst = maxf(worst, absf(float(leg["p_lx"]) - float(leg["want_lx"])))
+	return worst
 
 
 ## Knock the life out of the limbs for a moment (STO-ENEMIES-037).
