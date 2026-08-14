@@ -35,7 +35,16 @@ looks like it is floating in a claw rather than being gripped.
 Two causes, not one: a 4.5 cm contact margin AND the sweep stopping a
 whole step before contact. Together they left a visible gap, so a held
 crate looked like it was floating in a claw. Halving the step-back was
-the bigger of the two.
+the bigger of the two, and is what shipped.
+
+**The margin had to come back.** Cut to 0.02 it looked marginally
+better and broke gripping a MOVING body: a fingertip had to get so
+close that it missed a swinging ragdoll, and `smoke_wrap_ragdoll` went
+from 4/4 to 2/4. Restored to 0.035, which is 5/5 again.
+
+A grip that looks a millimetre tidier but lets go of a body you are
+dragging is a bad trade, and only the full suite catches that — the
+hand tests all passed at 0.02.
 
 ## Out of scope
 

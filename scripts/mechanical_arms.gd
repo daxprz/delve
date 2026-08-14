@@ -105,9 +105,14 @@ const CONTACT_STEPS := 16
 ##
 ## Was 0.045 — plus the sweep stopping one whole step early, that left
 ## a visible gap and a held crate looked like it was floating in a
-## claw. Now just under half a finger's thickness, so the tips rest ON
-## the surface without sinking into it.
-const CONTACT_MARGIN := 0.02
+## claw. Halving the step-back closed most of that gap.
+##
+## The margin itself went 0.045 -> 0.02 and had to come back to 0.035:
+## at 0.02 a fingertip had to get so close that it MISSED a swinging
+## ragdoll altogether, and smoke_wrap_ragdoll went from 4/4 to 2/4. A
+## grip that looks a millimetre better but lets go of a moving body is
+## a bad trade.
+const CONTACT_MARGIN := 0.035
 ## How far below the hand's centre line a held object rests — the palm
 ## side, where the fingers actually close.
 const GRIP_PALM_Y := -0.20
