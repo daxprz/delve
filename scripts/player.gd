@@ -164,9 +164,7 @@ const PISTON_RANGE := 4.5
 const PISTON_LIFT := 0.35           # how much of the launch goes upward
 ## Cooldown after a shot, so it cannot be spammed (STO-CHARACTER-068).
 const PISTON_COOLDOWN := 1.1
-const PistonScript := preload("res://scripts/piston.gd")
 var _piston_cd := 0.0
-var _piston_shaft: Node3D
 var _piston_mode := false
 var _piston_charge := 0.0
 var _piston_fired := 0
@@ -571,9 +569,8 @@ func dash_count() -> int:
 ## Lock the arms together, or unlock them (STO-CHARACTER-067).
 func toggle_piston() -> bool:
 	var arms := get_node_or_null("MechanicalArms")
-	if arms != null and arms.has_method("set_mode"):
-		arms.call("set_mode", 0 if bool(arms.call("is_piston_mode")) else 2)
-		_piston_mode = bool(arms.call("is_piston_mode"))
+	if arms != null and arms.has_method("toggle_piston_mode"):
+		_piston_mode = bool(arms.call("toggle_piston_mode"))
 	else:
 		_piston_mode = not _piston_mode
 	_piston_charge = 0.0
@@ -604,39 +601,33 @@ func _update_piston(delta: float) -> void:
 		fire_piston()
 
 
-## Fire the shaft. Returns the speed it was launched at.
+## Drive the arms out as a piston. Returns the stroke speed.
 ##
-## It SHOOTS OUT as a real object now (STO-CHARACTER-068) rather than
-## hitting instantly in a radius — the charge sets how fast the shaft
-## flies, and it connects with whatever it meets on the way.
+## No object is spawned (STO-CHARACTER-072): the ARMS are the piston,
+## so its reach is honestly limited by how long they are, and there is
+## nothing to keep in sync across the network beyond the launch itself.
 func fire_piston() -> float:
 	var t := clampf(_piston_charge / PISTON_MAX_CHARGE, 0.0, 1.0)
 	_piston_charge = 0.0
 	if not _piston_mode or _piston_cd > 0.0:
 		return 0.0
-	if is_instance_valid(_piston_shaft):
-		return 0.0                 # one shaft at a time
+	var arms := get_node_or_null("MechanicalArms")
+	if arms == null or not arms.has_method("fire_piston"):
+		return 0.0
+	if not bool(arms.call("fire_piston", t)):
+		return 0.0
 	_piston_cd = PISTON_COOLDOWN
 	_piston_fired += 1
-
-	# Fires wherever you AIM — straight up, straight down, behind you.
-	var dir := _aim_forward().normalized()
-	var shaft: Node3D = PistonScript.new()
-	shaft.name = "Piston"
-	get_parent().add_child(shaft)
-	shaft.global_position = global_position + Vector3.UP * 1.1 + dir * 0.4
-	shaft.global_transform = Transform3D(
-			Basis(Quaternion(Vector3(0, 0, 1), dir)), shaft.global_position)
-	shaft.call("setup", self, dir, t)
-	_piston_shaft = shaft
 	DebugOverlay.log("player/abilities", self,
-			"%s: piston FIRED (charge %.2f)", [name, t])
+			"%s: piston stroke (charge %.2f)", [name, t])
 	return lerpf(PISTON_MIN_LAUNCH, PISTON_MAX_LAUNCH, t)
 
 
-## The live shaft, or null.
-func piston_shaft() -> Node3D:
-	return _piston_shaft if is_instance_valid(_piston_shaft) else null
+## How far the arms are driven out right now.
+func piston_extend() -> float:
+	var arms := get_node_or_null("MechanicalArms")
+	return float(arms.call("piston_extend")) if arms != null \
+			and arms.has_method("piston_extend") else 0.0
 
 
 func piston_cooldown() -> float:
@@ -1251,9 +1242,12 @@ func _update_abilities() -> void:
 	# outright rather than moved, so F belongs to one thing and cannot
 	# feel like the pull "randomly stopped working". do_pull() is
 	# unhooked, not deleted — rebinding it is one line, same as C and G.
-	# Piston mode is one of the ARMS' three modes now, cycled with E
-	# (STO-CHARACTER-069) — F no longer toggles it separately, because
-	# a mode that sits on top of another mode is not a mode.
+	# F enters and leaves piston mode (STO-CHARACTER-073); E cycles
+	# grab and punch only. It is still a real MODE on the arms — it
+	# just has its own key instead of a slot in the cycle, because
+	# tabbing past it to get back to grabbing was clumsy.
+	if _has_ability("piston") and Input.is_action_just_pressed("ability_pull"):
+		toggle_piston()
 	var arms := get_node_or_null("MechanicalArms")
 	_piston_mode = arms != null and arms.has_method("is_piston_mode") \
 			and bool(arms.call("is_piston_mode"))

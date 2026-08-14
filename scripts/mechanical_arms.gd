@@ -454,6 +454,12 @@ func _physics_process(delta: float) -> void:
 	if _is_authority():
 		_update_grab_input()
 
+	# Ease into and out of the piston shape, so the change is a motion
+	# rather than a snap (STO-CHARACTER-073).
+	var want: float = 1.0 if _mode == MODE_PISTON else 0.0
+	_piston_blend = move_toward(_piston_blend, want, PISTON_BLEND_RATE * delta)
+	if _mode == MODE_PISTON:
+		_update_piston_stroke(delta)
 	for arm_v in _arms:
 		var arm: Dictionary = arm_v
 		_simulate_arm(arm, delta)
@@ -494,17 +500,19 @@ func _simulate_arm(arm: Dictionary, delta: float) -> void:
 		if arm["grabbed_body"] != null and is_instance_valid(arm["grabbed_body"]):
 			reach_lerp = CARRY_REACH_LERP
 		pts[last] += (target - pts[last]) * reach_lerp
-	elif _mode == MODE_PISTON:
+	elif _piston_blend > 0.01:
 		# PISTON MODE: both hands are pulled to the SAME point, so the
 		# two arms visibly converge and lock together into one shaft
-		# (STO-CHARACTER-070). Without this the piston appeared out of
-		# thin air while the arms carried on dangling separately.
+		# (STO-CHARACTER-070). Scaled by the blend so they FOLD in and
+		# unfold out rather than snapping (STO-CHARACTER-073) — and the
+		# blend outlasts the mode, so leaving it eases apart too.
 		var joined := _piston_point()
-		pts[last] += (joined - pts[last]) * PISTON_JOIN_LERP
+		pts[last] += (joined - pts[last]) * PISTON_JOIN_LERP * _piston_blend
 		# Pull the elbow inward too, or the arms meet at the hands
 		# while their middles still bow out to the sides.
 		var elbow := _shoulder_world(int(arm["side"])).lerp(joined, 0.5)
-		pts[last - 1] += (elbow - pts[last - 1]) * PISTON_JOIN_LERP * 0.6
+		pts[last - 1] += (elbow - pts[last - 1]) \
+				* PISTON_JOIN_LERP * 0.6 * _piston_blend
 	elif _punch_mode and arm["extended"]:
 		# Punch mode: the arms hang loose at your sides — no raised
 		# guard pose (STO-CHARACTER-031). Only while the button is HELD
@@ -1047,8 +1055,29 @@ func _update_fist_look() -> void:
 ## a proper mode: while it is on, the arms neither grab nor punch.
 ## How firmly the hands are drawn together in piston mode, and how far
 ## in front of the chest they meet.
-const PISTON_JOIN_LERP := 0.35
+## How quickly the hands come together. Eased through _piston_blend
+## rather than applied flat, so the arms visibly FOLD into the piston
+## over about half a second instead of snapping to it in three frames
+## (STO-CHARACTER-073).
+const PISTON_JOIN_LERP := 0.30
+const PISTON_BLEND_RATE := 2.2
 const PISTON_JOIN_DIST := 1.05
+## Firing (STO-CHARACTER-072): the ARMS are the piston. They drive
+## outward from the chest and their joined hands are the head — there
+## is no separate object, so the reach is honestly limited by how long
+## the arms are.
+const PISTON_MAX_EXTEND := 1.7      # past the joined-hands rest point
+const PISTON_FULL_SPEED := 9.375    # 1.25x the Runner's pounce
+const PISTON_MIN_SPEED := 3.0
+const PISTON_RETRACT := 7.0
+const PISTON_HIT_RADIUS := 1.0
+const PISTON_LAUNCH := 24.0
+var _piston_extend := 0.0
+var _piston_speed := PISTON_FULL_SPEED
+var _piston_out := false
+var _piston_hit: Dictionary = {}
+## 0 = arms apart and normal, 1 = fully locked into the piston.
+var _piston_blend := 0.0
 const MODE_GRAB := 0
 const MODE_PUNCH := 1
 const MODE_PISTON := 2
@@ -1061,11 +1090,20 @@ func _piston_point() -> Vector3:
 	if _player == null:
 		return Vector3.ZERO
 	var mid := (_shoulder_world(-1) + _shoulder_world(1)) * 0.5
-	return mid + aim_dir().normalized() * PISTON_JOIN_DIST
+	return mid + aim_dir().normalized() * (PISTON_JOIN_DIST + _piston_extend)
 
 
+## E cycles GRAB <-> PUNCH only (STO-CHARACTER-073). The piston has
+## its own key, F, because it is a bigger change of state than a fist
+## and having to tab past it to get back to grabbing was clumsy.
 func toggle_mode() -> void:
-	set_mode((_mode + 1) % 3)
+	set_mode(MODE_GRAB if _mode != MODE_GRAB else MODE_PUNCH)
+
+
+## F: into the piston from wherever you are, and back out to GRAB.
+func toggle_piston_mode() -> bool:
+	set_mode(MODE_GRAB if _mode == MODE_PISTON else MODE_PISTON)
+	return _mode == MODE_PISTON
 
 
 func set_mode(m: int) -> void:
@@ -1074,8 +1112,69 @@ func set_mode(m: int) -> void:
 	for i in range(_arms.size()):
 		_let_go(_arms[i])
 	_punch_mode = _mode == MODE_PUNCH
+	_piston_extend = 0.0
+	_piston_out = false
 	_update_fist_look()
 	print("[ARMS] mode = %s" % ["GRAB", "PUNCH", "PISTON"][_mode])
+
+
+## Drive the arms out as one piston. `charge01` sets the SPEED.
+func fire_piston(charge01: float) -> bool:
+	if _mode != MODE_PISTON or _piston_out or _piston_extend > 0.01:
+		return false
+	_piston_speed = lerpf(PISTON_MIN_SPEED, PISTON_FULL_SPEED,
+			clampf(charge01, 0.0, 1.0))
+	_piston_out = true
+	_piston_hit.clear()
+	return true
+
+
+## How far the arms are currently driven out.
+func piston_extend() -> float:
+	return _piston_extend
+
+
+## How far through folding into the piston the arms are, 0 to 1.
+func piston_blend() -> float:
+	return _piston_blend
+
+
+func piston_firing() -> bool:
+	return _piston_out or _piston_extend > 0.01
+
+
+## Step the piston stroke, and launch whatever the joined hands reach.
+func _update_piston_stroke(delta: float) -> void:
+	if _piston_out:
+		_piston_extend += _piston_speed * delta
+		if _piston_extend >= PISTON_MAX_EXTEND:
+			_piston_extend = PISTON_MAX_EXTEND
+			_piston_out = false
+	elif _piston_extend > 0.0:
+		_piston_extend = maxf(_piston_extend - PISTON_RETRACT * delta, 0.0)
+		return                                   # only the drive hits
+	else:
+		return
+	# The joined HANDS are the head of the piston.
+	var head := _piston_point()
+	var dir := aim_dir().normalized()
+	for group in ["enemies", "players"]:
+		for n in get_tree().get_nodes_in_group(group):
+			var node := n as Node3D
+			if node == null or node == _player:
+				continue
+			if head.distance_to(node.global_position) > PISTON_HIT_RADIUS:
+				continue
+			var id := node.get_instance_id()
+			if _piston_hit.has(id):
+				continue
+			_piston_hit[id] = true
+			var push := dir * PISTON_LAUNCH + Vector3.UP * 4.0
+			if group == "players":
+				if node.has_method("launch_by_piston"):
+					node.call("launch_by_piston", push)
+			elif node.has_method("apply_knockback"):
+				node.call("apply_knockback", push * 3.0)
 
 
 func arm_mode() -> int:

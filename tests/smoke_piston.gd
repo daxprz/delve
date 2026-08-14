@@ -18,6 +18,7 @@ var _enemy: CharacterBody3D
 var _slow_len := 0.0
 var _piston_arms
 var _apart_grab := 0.0
+var _up_from := Vector3.ZERO
 
 
 func _fire(charge: float) -> void:
@@ -48,8 +49,6 @@ func _physics_process(_d: float) -> bool:
 				return false
 			_check(bool(_grabber.call("toggle_piston")),
 					"F locks the arms into a piston")
-			_check(_grabber.call("piston_shaft") == null,
-					"no shaft until it is fired")
 			_piston_arms = _grabber.get_node_or_null("MechanicalArms")
 			_apart_grab = float(_piston_arms.call("hand_point", 0)
 					.distance_to(_piston_arms.call("hand_point", 1)))
@@ -71,76 +70,58 @@ func _physics_process(_d: float) -> bool:
 					% [apart, _apart_grab])
 			_next("slow")
 		"slow":
-			# A WEAK charge: the shaft still fires, just slowly.
+			# A WEAK charge drives the arms out slowly.
 			if _ticks == 1:
 				_fire(0.05)
+				_check(bool(_piston_arms.call("piston_firing")),
+						"firing drives the ARMS out — nothing is spawned")
 				return false
-			if _ticks == 2:
-				var shaft: Node3D = _grabber.call("piston_shaft")
-				_check(shaft != null, "firing creates a REAL shaft")
-				if shaft == null:
-					return _finish()
-				# It is solid: something you can stand on, not an area.
-				_check(shaft is AnimatableBody3D,
-						"the shaft is a solid body you could stand on")
-				_check(shaft.get_node_or_null("CollisionShape3D") != null
-								or shaft.get_child_count() >= 2,
-						"and it has a collision shape")
+			if _ticks < 10:
 				return false
-			if _ticks < 12:
-				return false
-			var s1: Node3D = _grabber.call("piston_shaft")
-			_slow_len = float(s1.call("shaft_length")) if s1 != null else 0.0
-			_check(_slow_len > 0.0, "the slow shaft extended (%.2f m)" % _slow_len)
+			_slow_len = float(_grabber.call("piston_extend"))
+			_check(_slow_len > 0.0,
+					"the arms extended (%.2f m)" % _slow_len)
 			_next("cooldown")
 		"cooldown":
-			# It cannot be spammed.
 			if _ticks == 1:
 				_grabber.set("_piston_charge", 1.6)
-				var again := float(_grabber.call("fire_piston"))
-				_check(is_equal_approx(again, 0.0),
-						"a second shot is refused while on cooldown")
+				_check(is_equal_approx(float(_grabber.call("fire_piston")), 0.0),
+						"a second stroke is refused while on cooldown")
 				return false
-			if _ticks < 90:
+			if _ticks < 80:
 				return false
-			_check(_grabber.call("piston_shaft") == null,
-					"the shaft retracts and goes away")
+			_check(float(_grabber.call("piston_extend")) < 0.05,
+					"the arms retract all the way back (%.2f m)"
+					% float(_grabber.call("piston_extend")))
 			_next("fast")
 		"fast":
-			# A FULL charge must fire FASTER than a weak one.
+			# A FULL charge drives them out FASTER.
 			if _ticks == 1:
 				_fire(1.6)
 				return false
-			if _ticks < 12:
+			if _ticks < 10:
 				return false
-			var s2: Node3D = _grabber.call("piston_shaft")
-			var fast_len := float(s2.call("shaft_length")) if s2 != null else 0.0
+			var fast_len := float(_grabber.call("piston_extend"))
 			_check(fast_len > _slow_len * 1.5,
-					"a full charge fires far faster (%.2f m vs %.2f m in the same time)"
+					"a full charge drives out far faster (%.2f m vs %.2f m)"
 					% [fast_len, _slow_len])
 			_next("aim")
 		"aim":
-			# ANY direction — straight up here.
-			if _ticks < 90:
+			# ANY direction: the joined hands go where you look.
+			if _ticks < 80:
 				return false
-			if _ticks == 90:
+			if _ticks == 80:
 				var cam := _grabber.get_node("Camera3D") as Camera3D
-				cam.rotation.x = deg_to_rad(80.0)      # look up
+				cam.rotation.x = deg_to_rad(80.0)
+				_up_from = _piston_arms.call("hand_point", 0)
 				_fire(1.6)
 				return false
-			if _ticks < 100:
+			if _ticks < 95:
 				return false
-			var s3: Node3D = _grabber.call("piston_shaft")
-			if s3 == null:
-				_check(false, "a shaft exists when aiming up")
-				return _finish()
-			# +Z, not -Z: the shaft is built along its local +Z and
-			# oriented with Quaternion(+Z, dir), so +Z IS the direction
-			# it was fired.
-			var up_dir := s3.global_transform.basis.z
-			_check(up_dir.y > 0.5,
-					"it fires where you AIM, including straight up (y %.2f)"
-					% up_dir.y)
+			var now_at: Vector3 = _piston_arms.call("hand_point", 0)
+			_check(now_at.y > _up_from.y + 0.3,
+					"aiming up drives the hands UPWARD (%.2f -> %.2f)"
+					% [_up_from.y, now_at.y])
 			_next("enemy")
 		"enemy":
 			# An enemy in its path is launched AND ragdolled.

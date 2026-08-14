@@ -73,12 +73,22 @@ func _physics_process(_delta: float) -> bool:
 			if _frames >= 3:
 				_player.set_health(100.0)
 				_hp = _player.health()
-				_player.take_damage(40.0)  # blocking is active -> reduced
+				_player.take_damage(40.0)
 				var lost: float = _hp - _player.health()
-				if lost > 5.0 and lost < 15.0:
-					_pass("blocking cut 40 damage down to %.0f" % lost)
+				# INVERTED for STO-CHARACTER-056: C is a DEAD KEY. It
+				# used to block, parry and dodge-roll, and the operator
+				# chose to drop all three knowing the cost — there is
+				# no defence but footwork now.
+				#
+				# This test had been hidden behind the port for so long
+				# (STO-TOOLS-009) that it was still asserting the world
+				# as it was before that decision. Second time that has
+				# happened; the first cost us two failing tests shipped
+				# in v0.1.9.
+				if lost > 35.0:
+					_pass("C is dead: a blow costs full damage (%.0f)" % lost)
 				else:
-					_fail("block did not reduce damage (lost %.0f)" % lost)
+					_fail("something still reduced the damage (lost %.0f)" % lost)
 				Input.action_release("ability_guard")
 				_player.set_health(140.0)
 				_to("parry")
