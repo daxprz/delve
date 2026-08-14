@@ -34,7 +34,7 @@ static var LIST := [
 		"arms": false, "double_jump": false, "wall_jump": true,
 		"wall_climb": false, "tail": true, "humanoid": true,
 		"pounce": true,
-		"abilities": ["dodge"],
+		"abilities": ["dodge", "dash", "scratch"],
 	},
 	{
 		"id": "flyer", "name": "Flyer",

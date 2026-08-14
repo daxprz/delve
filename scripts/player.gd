@@ -148,6 +148,36 @@ var _wall_lock := 0.0
 const PUSH_LOCK := 0.16
 var _push_lock := 0.0
 var _pre_move_velocity := Vector3.ZERO
+# --- Runner claws (STO-CHARACTER-066) --------------------------------
+## EVERY scratch does this much, however fast you click. The damage
+## never stacks: spamming buys you more scratches per second, not
+## bigger ones. Your damage output is however fast you can press, but
+## no single hit is ever big.
+const SCRATCH_DAMAGE := 0.25
+const SCRATCH_RANGE := 2.6
+## No enforced cooldown — the limit is how fast a person can click.
+## This only stops one press registering twice in a frame.
+const SCRATCH_MIN_GAP := 0.02
+## Click rate is measured over this window, and drives the EFFECTS
+## (how hard it shoves, how it sounds) — never the damage.
+const SCRATCH_RATE_WINDOW := 1.0
+var _scratch_times: Array = []
+var _scratch_cd := 0.0
+var _scratches := 0
+
+# --- Runner dash (STO-CHARACTER-065) ---------------------------------
+## Two taps of W closer together than this dash; further apart is just
+## walking, which must never dash by accident.
+const DASH_TAP_WINDOW := 0.28
+const DASH_SPEED := 21.0
+const DASH_TIME := 0.22
+const DASH_COOLDOWN := 0.9
+var _last_w_tap := -99.0
+var _dash_time := 0.0
+var _dash_cd := 0.0
+var _dash_dir := Vector3.ZERO
+var _dashes := 0
+
 ## Echo-sight flag (the Sniper sees by sound alone).
 var _blind := false
 
@@ -409,6 +439,70 @@ func _remote_enemy_damage(amount: float) -> void:
 	if multiplayer.get_remote_sender_id() != 1:
 		return          # only the server decides that an enemy hit you
 	take_damage(amount)
+
+
+## One claw swipe. Always SCRATCH_DAMAGE, however fast you are
+## clicking (STO-CHARACTER-066).
+func do_scratch(side: int) -> bool:
+	if _scratch_cd > 0.0:
+		return false
+	_scratch_cd = SCRATCH_MIN_GAP
+	_scratches += 1
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	_scratch_times.append(now)
+	while _scratch_times.size() > 0 \
+			and now - float(_scratch_times[0]) > SCRATCH_RATE_WINDOW:
+		_scratch_times.remove_at(0)
+
+	var target := _nearest_enemy(SCRATCH_RANGE)
+	if target == null:
+		return true                    # a swipe at nothing still swings
+	# The DAMAGE is flat. Only the shove grows with how fast you are
+	# clicking, so fast clawing feels frantic without ever hitting hard.
+	if target.has_method("take_damage"):
+		target.call("take_damage", SCRATCH_DAMAGE)
+	if target.has_method("apply_knockback"):
+		var away: Vector3 = (target as Node3D).global_position - global_position
+		away.y = 0.0
+		if away.length() > 0.001:
+			var shove: float = 1.0 + minf(float(scratch_rate()) * 0.15, 2.0)
+			target.call("apply_knockback",
+					away.normalized() * (2.0 * shove) + Vector3.UP * 0.6)
+	DebugOverlay.log("player/abilities", self,
+			"%s: scratch %d for %.2f (rate %.1f/s)",
+			[name, side, SCRATCH_DAMAGE, scratch_rate()])
+	return true
+
+
+## Scratches per second over the last second — drives the EFFECTS.
+func scratch_rate() -> float:
+	return float(_scratch_times.size()) / SCRATCH_RATE_WINDOW
+
+
+func scratch_count() -> int:
+	return _scratches
+
+
+## A short burst of speed (STO-CHARACTER-065).
+func do_dash() -> bool:
+	if _dash_cd > 0.0 or not _has_ability("dash"):
+		return false
+	var fwd := -global_transform.basis.z
+	fwd.y = 0.0
+	_dash_dir = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
+	_dash_time = DASH_TIME
+	_dash_cd = DASH_COOLDOWN
+	_dashes += 1
+	DebugOverlay.log("player/abilities", self, "%s: DASH", [name])
+	return true
+
+
+func is_dashing() -> bool:
+	return _dash_time > 0.0
+
+
+func dash_count() -> int:
+	return _dashes
 
 
 func is_blocking() -> bool:
@@ -772,6 +866,16 @@ func _physics_process(delta: float) -> void:
 	if _push_lock > 0.0:
 		_push_lock -= delta
 
+	# Dashing overrides walking outright (STO-CHARACTER-065): a burst
+	# you cannot steer out of, which is what makes it a dash rather
+	# than "briefly faster".
+	if _dash_time > 0.0:
+		_dash_time -= delta
+		velocity.x = _dash_dir.x * DASH_SPEED
+		velocity.z = _dash_dir.z * DASH_SPEED
+		move_and_slide()
+		return
+
 	# While an arm is reeling us in, walk input must not damp the pull
 	# away: without this the ground friction cancels all but a single
 	# tick of it every frame and the grapple barely moves you.
@@ -943,6 +1047,10 @@ func _update_heal(delta: float) -> void:
 
 ## Read ability keys each tick and trigger the ones this character has.
 func _update_abilities() -> void:
+	if _scratch_cd > 0.0:
+		_scratch_cd -= get_physics_process_delta_time()
+	if _dash_cd > 0.0:
+		_dash_cd -= get_physics_process_delta_time()
 	# C and G are DEAD KEYS (STO-CHARACTER-056).
 	#
 	# G was the throw — RMB does that now, and better
@@ -957,6 +1065,20 @@ func _update_abilities() -> void:
 	# one line rather than a rewrite.
 	if _has_ability("zip") and Input.is_action_just_pressed("ability_zip"):
 		do_zip()
+	# Double-tap W to dash (STO-CHARACTER-065).
+	if _has_ability("dash") and Input.is_action_just_pressed("move_forward"):
+		var now := float(Time.get_ticks_msec()) / 1000.0
+		if now - _last_w_tap < DASH_TAP_WINDOW:
+			do_dash()
+			_last_w_tap = -99.0        # a third tap must not chain
+		else:
+			_last_w_tap = now
+	# Claws (STO-CHARACTER-066): LMB one side, RMB the other.
+	if _has_ability("scratch"):
+		if Input.is_action_just_pressed("scratch_left"):
+			do_scratch(0)
+		if Input.is_action_just_pressed("scratch_right"):
+			do_scratch(1)
 	if _has_ability("pull") and Input.is_action_just_pressed("ability_pull"):
 		do_pull()
 	# Keep a held object floating in front of the Grabber.

@@ -19,35 +19,42 @@ the other. A single press is a light flick — **0.25 damage**. But the
 faster you click, the faster it swings AND the harder each scratch
 lands.
 
-So it is a weapon that rewards frantic clicking rather than timing —
-very different from the Grabber's heavy momentum punches or the
-Sniper's one slow deliberate shot.
+**Every scratch does 0.25, always.** The damage never builds up. What
+spamming buys you is *more scratches per second* — and different
+**effects** as you go faster.
+
+That is the whole shape of the weapon: your damage per second is
+however fast you can press, but no single hit ever gets big. Very
+different from the Grabber's heavy momentum punches or the Sniper's
+one slow deliberate shot.
 
 ## Definition of Done
 
 - [ ] LMB scratches with one claw, RMB with the other.
 - [ ] One press on its own does **0.25** damage.
 - [ ] Clicking faster makes it swing faster.
-- [ ] Clicking faster makes each scratch do more damage.
+- [ ] Each scratch still does exactly **0.25** however fast you click
+      — the damage never stacks or multiplies.
+- [ ] Clicking faster changes the **effects** (how it looks and
+      feels), not the damage.
 - [ ] There is no minimum gap between clicks other than how fast you
       can press.
 - [ ] Only the Runner has it.
 - [ ] Proven by a headless test comparing slow clicking with fast
       clicking.
 
-## Open question — "the damage doesn't stack"
+## Settled: what "the damage doesn't stack" means
 
-The operator said the damage **must not stack**, and that could mean
-two different things. **Not yet decided, must be settled before
-building:**
+Asked, and answered: **the damage per scratch is always 0.25.** It
+never multiplies, never builds up, and there is no combo bonus.
 
-1. The build-up has a **ceiling** — clicking ever faster stops helping
-   past some point, so you cannot reach absurd damage.
-2. Two scratches landing on the same enemy at the same moment count
-   **once**, rather than both applying.
+Spamming gives you more damage *per second* purely because you land
+more scratches — and it changes the **effects**, not the numbers.
 
-Both are reasonable readings of the same sentence, and they need
-different code. Ask before building.
+Worth having asked. The earlier wording ("the more the player spams it
+the more damage it does") reads as a damage multiplier, and building
+that would have produced a completely different weapon: one where the
+skill is maintaining a combo rather than simply clicking fast.
 
 ## Out of scope
 
