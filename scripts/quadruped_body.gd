@@ -11,6 +11,8 @@ extends Node3D
 ## ground and it is never left unsupported. That is what makes it read
 ## as a crawler rather than a box sliding along.
 
+const PincerScript := preload("res://scripts/pincers.gd")
+
 ## Which corner each leg sits at, and which diagonal PAIR it belongs
 ## to. Legs in the same pair swing together.
 const LEGS: Array = [
@@ -84,6 +86,7 @@ var _legs: Array = []        # {root, upper, lower, pair, rest}
 var _fracs: Array = SEGMENT_FRACTIONS.duplicate()
 var _angles: Array = SEGMENT_ANGLES.duplicate()
 var _mat: StandardMaterial3D
+var _pincers: Node3D          # the reaching arms (STO-ENEMIES-030)
 var _speed := 0.0
 
 
@@ -130,6 +133,15 @@ func _ready() -> void:
 	_build_body()
 	for def in LEGS:
 		_build_leg(def)
+	# Pincer arms (STO-ENEMIES-030). Their own node rather than more
+	# code in here: the legs are about carrying the creature and the
+	# arms are about reaching for you, and every story left in this epic
+	# touches the arms and none of them touch the gait.
+	_pincers = PincerScript.new()
+	_pincers.name = "Pincers"
+	_pincers.set("variation_seed", variation_seed)
+	add_child(_pincers)
+	_pincers.call("build", _body_size, _body_height(), _mat)
 	print("[QUADRUPED] %d legs, body %.2fx%.2fx%.2f, segments %.2f/%.2f/%.2f, height %.2f (seed %d)"
 			% [_legs.size(), _body_size.x, _body_size.y, _body_size.z,
 			_leg_len * float(_fracs[0]), _leg_len * float(_fracs[1]),
@@ -326,6 +338,11 @@ func knee_positions() -> Array:
 ## How high the block rides, for tests.
 func body_height() -> float:
 	return _body_height()
+
+
+## The pincer arms (STO-ENEMIES-030), or null on a body without them.
+func pincers() -> Node3D:
+	return _pincers
 
 
 ## This individual's segment lengths, body outward (for tests).
