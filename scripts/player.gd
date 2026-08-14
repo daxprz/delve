@@ -157,7 +157,10 @@ var _pre_move_velocity := Vector3.ZERO
 ## case is the point — a Runner fired across the map arrives at speed,
 ## and its claw damage is 100% momentum (STO-CHARACTER-066), so a
 ## piston-launched Runner lands the hardest scratch in the game.
-const PISTON_MAX_CHARGE := 1.6      # seconds to a full-power shot
+## Seconds to a full-power shot. Halved from 1.6 (STO-CHARACTER-075):
+## the charge builds twice as fast, so a full stroke is a beat rather
+## than a wait.
+const PISTON_MAX_CHARGE := 0.8
 const PISTON_MIN_LAUNCH := 6.0      # a tap still does something
 const PISTON_MAX_LAUNCH := 34.0     # a full charge is dramatic
 const PISTON_RANGE := 4.5

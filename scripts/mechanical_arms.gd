@@ -1286,13 +1286,34 @@ func _update_piston_stroke(delta: float) -> void:
 			var node := n as Node3D
 			if node == null or node == _player:
 				continue
-			if head.distance_to(node.global_position) > PISTON_HIT_RADIUS:
+			# Measured to the target's MIDDLE, not its origin. An
+			# enemy's origin is at its FEET while the piston is held at
+			# shoulder height, so origin-to-origin missed by more than
+			# the hit radius and a full-power stroke sailed straight
+			# over everything. Exactly the fault that made a pounce
+			# miss by ten centimetres (STO-CORE-007's neighbour).
+			var centre: Vector3 = node.global_position + Vector3.UP * 0.9
+			if head.distance_to(centre) > PISTON_HIT_RADIUS:
 				continue
 			var id := node.get_instance_id()
 			if _piston_hit.has(id):
 				continue
 			_piston_hit[id] = true
-			var push := dir * PISTON_LAUNCH + Vector3.UP * 4.0
+			# THE PUSH COMES FROM THE STROKE'S OWN SPEED
+			# (STO-CHARACTER-075), not a fixed number applied the
+			# instant a check passes. Squared, so a gentle stroke
+			# genuinely only nudges while a full one throws — linear
+			# scaling left even the weakest stroke hard enough to
+			# ragdoll, which made the charge pointless.
+			var speed01: float = clampf(_piston_speed / PISTON_FULL_SPEED,
+					0.0, 1.0)
+			# CUBED, not squared. Squared still left a barely-charged
+			# stroke hard enough to ragdoll a light enemy (dv ~7.4
+			# against a ~7.5 threshold that varies with each enemy's
+			# generated mass). Cubing drops the weak end to dv ~2.4 —
+			# a clear shove — while a full stroke is unchanged.
+			var force: float = PISTON_LAUNCH * speed01 * speed01 * speed01
+			var push := dir * force + Vector3.UP * (4.0 * speed01)
 			if group == "players":
 				if node.has_method("launch_by_piston"):
 					node.call("launch_by_piston", push)
