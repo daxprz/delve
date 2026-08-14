@@ -23,16 +23,21 @@ shaft, and on release the shaft **shoots out** — travelling, hitting
 whatever it meets on the way, then **retracting**, with a cooldown
 before it can fire again.
 
-**The charge sets its SPEED, not its damage.** Hold it longer and the
-shaft fires out faster. Everything after that is momentum: what it
-hits and how hard is decided by how fast it is actually travelling
-when it connects — the same rule as the Runner's claws.
+**No momentum here.** Unlike the Runner's claws, the piston does not
+work out its force from how fast it happens to be moving. A longer
+charge fires it further and faster, and what it launches is launched —
+simple and predictable.
+
+**And you can stand on it.** The shaft is solid, like any other body
+in the world, so a player can get on top of it. A Grabber can raise a
+teammate up on the piston, or fire it under someone to lift them.
 
 ## What it should look and feel like
 
 - **You can see it.** The two arms combine into one visible shaft.
 - **It has a body.** The shaft is collidable — it can hit things
-  because it is physically there, not because a check said so.
+  because it is physically there, not because a check said so. Solid
+  enough to **stand on**, like any other body.
 - **It launches like the Runner's pounce, but 1.25x faster.** The
   pounce is `POUNCE_FORWARD = 7.5` at full charge, so the piston is
   **9.375**.
@@ -49,8 +54,9 @@ when it connects — the same rule as the Runner's claws.
 - [ ] A longer charge makes it travel FASTER (not do more damage).
 - [ ] Full charge is 1.25x the pounce: 9.375.
 - [ ] It fires wherever you aim, including straight up and down.
-- [ ] What it hits is launched by the shaft's MOMENTUM at the moment
-      of contact.
+- [ ] What it hits is launched — a fixed, predictable push, **not**
+      worked out from momentum.
+- [ ] A player can **stand on the shaft**, and rides it as it moves.
 - [ ] It retracts afterwards.
 - [ ] There is a cooldown, so it cannot be spammed.
 - [ ] Enemies are still ragdolled and players still keep control
@@ -61,7 +67,16 @@ when it connects — the same rule as the Runner's claws.
 ## Out of scope
 
 - The shaft being destructible or grabbable.
-- Riding your own piston.
+
+## Notes on standing on it
+
+Worth watching: players currently have **collision exceptions with
+each other** (STO-CORE-004), added to stop two players shoving each
+other into the sky. The piston must be solid to players WITHOUT
+reintroducing that — a platform you can stand on is exactly the shape
+of thing that caused the original launch bug, so it needs testing
+against the same failure: two people on one piston must not climb
+forever.
 
 ## Notes
 
