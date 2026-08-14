@@ -98,7 +98,9 @@ const THROW_FORCE := 22.0
 ## plus 0.3 m of height — knee level, tucked against the body, so it
 ## read as being pulled to you rather than held, and it sat in the way
 ## of the very aim you were lining up.
-const THROW_HOLD_DIST := 2.4
+## Matched to MechanicalArms.HOLD_DIST: beyond ~2.0 the arm cannot
+## reach what it is carrying (STO-CHARACTER-062).
+const THROW_HOLD_DIST := 1.75
 var _held: Node
 # Grabber pull (STO-CHARACTER-027): yank an enemy/box toward you.
 const PULL_RANGE := 14.0

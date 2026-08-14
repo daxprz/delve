@@ -63,7 +63,12 @@ func _physics_process(_d: float) -> bool:
 
 			# OUT IN FRONT: clearly away from the body, not hugged.
 			var dist := to_box.length()
-			_check(dist > 1.8,
+			# Threshold lowered from 1.8 with the constant it tracks:
+			# THROW_HOLD_DIST went 2.4 -> 1.75 because beyond ~2.0 the
+			# arm cannot reach what it is carrying (STO-CHARACTER-062).
+			# 1.75 is still held out at arm's length, which is what this
+			# story was about.
+			_check(dist > 1.5,
 					"it is held out away from the player (%.2f m from the eye)"
 					% dist)
 			# ...and in front, not off to the side or behind.

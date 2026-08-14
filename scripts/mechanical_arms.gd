@@ -28,12 +28,90 @@ const PART_NAMES: PackedStringArray = ["UpperArm", "Forearm", "Hand"]
 @export var shoulder_offset: Vector3 = Vector3(0.28, 1.4, 0.0)
 
 # --- Limb dimensions (metres, before arm_scale) ---
-const UPPER_LEN := 0.90
+## Lengthened (STO-CHARACTER-062) so the Grabber can hold something
+## out at EYE LEVEL with its fingers still around it. At 0.90/0.78 the
+## arm reached 2.02 to the knuckles against a 2.40 carry point — it
+## could never catch what it was carrying, so the fingers closed on
+## air. The operator chose longer arms over giving either up.
+const UPPER_LEN := 1.20
 const UPPER_TH := 0.28
-const FORE_LEN := 0.78
+const FORE_LEN := 1.05
 const FORE_TH := 0.22
-const HAND_LEN := 0.34   # wrist -> fingertip
+const HAND_LEN := 0.34   # wrist -> knuckles (the palm block)
 const FIST_TH := 0.40    # fists are chunky
+
+# --- Fingers (STO-CHARACTER-057) -------------------------------------
+## Five fingers per hand, laid out like a human one — pointer, middle,
+## ring, pinky in a row, with the thumb apart and opposing them.
+##
+## They are all the SAME LENGTH, which is the one deliberate departure
+## from a real hand (where the middle finger is longest). The operator
+## asked for equal lengths so the hand reads as mechanical rather than
+## as a copy of a human one — which suits the Grabber: these are built
+## arms, not grown ones.
+const FINGER_NAMES: PackedStringArray = ["Pointer", "Middle", "Ring", "Pinky", "Thumb"]
+const THUMB_INDEX := 4
+## 2 joints per finger => 3 segments, base -> middle -> tip.
+const FINGER_SEGMENTS := 3
+const FINGER_LEN := 0.30          # total length, same for every finger
+## Chunky mechanical fingers (STO-CHARACTER-061) — these are built
+## arms, not delicate ones.
+##
+## Thickness and spread are ONE decision, not two: thicker fingers
+## clip into each other unless the spread grows with them, which is
+## the exact fault STO-CHARACTER-058 fixed. Both moved together here,
+## and 058's no-clip test is what proves it.
+const FINGER_TH := 0.090
+## How far the whole hand span reaches across, for spacing the four.
+## Widened alongside FINGER_TH so the gap between fingers survives
+## them getting chunkier (STO-CHARACTER-061).
+const FINGER_SPREAD := 0.42
+## Knuckles sit BELOW the middle of the palm block, so a closing
+## finger curls in front of the palm rather than through it.
+const FINGER_KNUCKLE_Y := -0.12
+## The thumb sits BELOW the palm's lower face, not inside it. Measured
+## the hard way (STO-CHARACTER-058): from the middle of the palm its
+## curl swept from x -0.22 to -0.04, straight through the block. A real
+## thumb closes ACROSS the palm's front surface, and this puts it
+## there. FIST_TH * 0.5 is that surface; the rest is clearance.
+const THUMB_KNUCKLE_Y := -0.24
+## A thumb curls LESS than a finger — true of real hands, and here it
+## also stops the tilted curl plane carrying the tip back up into the
+## palm past halfway (STO-CHARACTER-058).
+const THUMB_CURL_SCALE := 0.42
+## Curl the hand settles at when it is holding nothing — fingers hang
+## slightly relaxed rather than rigidly splayed.
+const REST_CURL := 0.18
+## Curl of a clenched fist in punch mode (STO-CHARACTER-060).
+const FIST_CURL := 1.0
+## Gripping something solid — a wall — closes the hand most of the way.
+const ANCHOR_CURL := 0.8
+## How fast the hand opens and closes, in curl per second. Fast enough
+## to feel responsive, slow enough that switching modes is a motion
+## rather than a snap (STO-CHARACTER-060).
+const CURL_SPEED := 6.0
+## An object of this radius or more keeps the fingers fully open; a
+## point-sized one lets them close completely (STO-CHARACTER-059).
+const GRIP_OPEN_RADIUS := 0.55
+## However big the thing is, keep some bend — a dead-flat hand reads
+## as not holding anything.
+const GRIP_MIN_CURL := 0.12
+## How finely each finger sweeps for the object's surface. 16 steps is
+## about 6 degrees of knuckle per step — finer than anyone can see.
+const CONTACT_STEPS := 16
+## Stop a fingertip's width short of the surface, so fingers rest ON
+## an object rather than in it.
+const CONTACT_MARGIN := 0.045
+## How far each joint bends at full curl, base -> tip. The base knuckle
+## bends least: a finger whose joints all bend equally curls into a
+## hoop rather than a fist.
+##
+## Totals 155 degrees, not the 212 it started at (STO-CHARACTER-058).
+## At 212 the fingertip ended up INSIDE the palm block — measured, not
+## guessed: tip y -0.101 against a palm spanning y +/-0.20. A finger
+## that folds through its own hand is the exact thing the operator
+## asked to prevent.
+const FINGER_CURL_MAX: Array = [0.75, 1.00, 0.95]
 
 # --- Verlet ragdoll tuning ---
 const GRAVITY := Vector3(0.0, -12.0, 0.0)
@@ -44,6 +122,11 @@ const CHAIN_MARGIN := 0.06   # how far a chain link is kept off a surface it hit
 ## How fast a grabbing hand reaches its target. Low = heavy (eases over
 ## several frames) instead of snapping there instantly.
 const GRAB_REACH_LERP := 0.18
+## While CARRYING something the hand pulls to its target much harder.
+## Easing at 0.18 never arrived: gravity drags the chain down every
+## tick, so the hand sat short and the held object hung beyond the
+## fingertips. An arm holding something braces; it does not dangle.
+const CARRY_REACH_LERP := 0.55
 
 # --- Grab tuning ---
 const GRAB_REACH := 3.0        # how far a hand can reach to grab (short reach)
@@ -160,11 +243,11 @@ func _make_arm(index: int, side: int, button: int, arm_name: String) -> void:
 	pts.append(shoulder + Vector3.DOWN * (lengths[0] + lengths[1] + lengths[2]))
 
 	_arms.append({
-		"side": side, "button": button, "root": root,
+		"index": index, "side": side, "button": button, "root": root,
 		"points": pts, "prev": pts.duplicate(), "lengths": lengths,
 		"grabbed": false, "target": Vector3.ZERO, "was_pressed": false,
 		"grabbed_body": null, "grabbed_enemy": null,
-		"extended": false, "force_extend": false,
+		"extended": false, "force_extend": false, "curl": REST_CURL,
 	})
 
 
@@ -199,21 +282,142 @@ func _make_fist() -> Node3D:
 	fist.position = Vector3(0.0, 0.0, HAND_LEN * 0.5 * arm_scale)
 	hand.add_child(fist)
 
-	var span := FIST_TH * 0.7 * arm_scale
-	for i in 4:
-		var knuckle := MeshInstance3D.new()
-		knuckle.name = "Knuckle%d" % i
-		var kbox := BoxMesh.new()
-		kbox.size = Vector3(FIST_TH * 0.2, FIST_TH * 0.22, HAND_LEN * 0.5) * arm_scale
-		knuckle.mesh = kbox
-		knuckle.material_override = _metal
-		var t := float(i) / 3.0
-		knuckle.position = Vector3(
-				lerpf(-span * 0.5, span * 0.5, t),
-				FIST_TH * 0.45 * arm_scale,
-				HAND_LEN * 0.7 * arm_scale)
-		hand.add_child(knuckle)
+	_add_fingers(hand)
 	return hand
+
+
+## Build the five fingers onto a hand (STO-CHARACTER-057).
+##
+## Each finger is a nested chain — Base -> J1 -> Mid -> J2 -> Tip —
+## so curling is just rotating the two joint nodes. Nesting means a
+## rotation at J1 carries everything past it, exactly as a real finger
+## does, instead of each segment having to be placed by hand.
+func _add_fingers(hand: Node3D) -> void:
+	var fingers := Node3D.new()
+	fingers.name = "Fingers"
+	hand.add_child(fingers)
+
+	var spread := FINGER_SPREAD * arm_scale
+	var knuckle_z := HAND_LEN * arm_scale
+	for i in FINGER_NAMES.size():
+		var finger := _make_finger(String(FINGER_NAMES[i]))
+		if i == THUMB_INDEX:
+			# The thumb sits back along the palm and OPPOSES the rest,
+			# so the hand can close ON something rather than flapping
+			# four fingers at it.
+			finger.position = Vector3(-spread * 0.55,
+					THUMB_KNUCKLE_Y * arm_scale, knuckle_z * 0.45)
+			finger.rotation = Vector3(0.0, 0.0, deg_to_rad(-72.0))
+		else:
+			# Pointer -> pinky, evenly across the knuckle line.
+			var t := float(i) / float(FINGER_NAMES.size() - 2)
+			finger.position = Vector3(lerpf(spread * 0.42, -spread * 0.42, t),
+					FINGER_KNUCKLE_Y * arm_scale, knuckle_z)
+		fingers.add_child(finger)
+
+
+## One finger: FINGER_SEGMENTS segments in a nested chain, every finger
+## the same total length.
+func _make_finger(finger_name: String) -> Node3D:
+	var seg_len := FINGER_LEN * arm_scale / float(FINGER_SEGMENTS)
+	var th := FINGER_TH * arm_scale
+
+	var root := Node3D.new()
+	root.name = finger_name
+	var parent := root
+	for s_i in FINGER_SEGMENTS:
+		# Joint nodes are what get rotated to curl the finger; the
+		# meshes hang off them and never move on their own.
+		var joint := Node3D.new()
+		joint.name = "J%d" % s_i
+		parent.add_child(joint)
+
+		# No knuckle sphere per segment (STO-CHARACTER-061): 5 fingers
+		# x 3 segments x 2 hands was 30 spheres per player, at a size
+		# where nobody can see them.
+		var seg := MeshInstance3D.new()
+		seg.name = "Seg"
+		var sbox := BoxMesh.new()
+		sbox.size = Vector3(th, th, seg_len)
+		seg.mesh = sbox
+		seg.material_override = _fist_mat if s_i == 0 else _metal
+		seg.position = Vector3(0.0, 0.0, seg_len * 0.5)
+		joint.add_child(seg)
+
+		# The next joint starts at the end of this segment.
+		var tip := Node3D.new()
+		tip.name = "End"
+		tip.position = Vector3(0.0, 0.0, seg_len)
+		joint.add_child(tip)
+		parent = tip
+	return root
+
+
+## Curl one finger. `t` is 0 (straight) to 1 (fully closed) — the
+## single number every later story in EPI-CHARACTER-FINGERS drives:
+## wrapping around a grabbed object, clenching in punch mode, and the
+## limits that stop it reaching impossible shapes.
+##
+## The base knuckle bends less than the two joints past it, which is
+## what makes a curling finger look like a finger rather than a hoop.
+func set_finger_curl(finger: Node3D, t: float) -> void:
+	if finger == null:
+		return
+	# Clamped at BOTH ends (STO-CHARACTER-058): below 0 a finger would
+	# bend backwards past straight, which no hand does; above 1 it
+	# would fold through the palm.
+	var c := clampf(t, 0.0, 1.0)
+	if finger.name == "Thumb":
+		c *= THUMB_CURL_SCALE
+	var node: Node3D = finger
+	for s_i in FINGER_SEGMENTS:
+		var joint := node.get_node_or_null("J%d" % s_i) as Node3D
+		if joint == null:
+			return
+		joint.rotation.x = -c * FINGER_CURL_MAX[s_i]
+		node = joint.get_node_or_null("End") as Node3D
+		if node == null:
+			return
+
+
+## Curl every finger on a hand to the same amount.
+func set_hand_curl(arm_index: int, t: float) -> void:
+	var f := fingers_root(arm_index)
+	if f == null:
+		return
+	for finger in f.get_children():
+		set_finger_curl(finger as Node3D, t)
+
+
+## How closed a hand currently is, 0 (straight) to 1 (clenched).
+func hand_curl(arm_index: int) -> float:
+	if arm_index < 0 or arm_index >= _arms.size():
+		return 0.0
+	return float(_arms[arm_index].get("curl", REST_CURL))
+
+
+## How closed ONE finger currently is (STO-CHARACTER-062: each finger
+## has its own).
+func finger_curl(arm_index: int, finger_name: String) -> float:
+	if arm_index < 0 or arm_index >= _arms.size():
+		return 0.0
+	var curls: Dictionary = _arms[arm_index].get("curls", {})
+	return float(curls.get(finger_name, REST_CURL))
+
+
+## The Fingers node of an arm's hand, or null.
+func fingers_root(arm_index: int) -> Node3D:
+	if arm_index < 0 or arm_index >= _arms.size():
+		return null
+	var root: Node3D = _arms[arm_index]["root"]
+	var hand := root.get_node_or_null("Hand") as Node3D
+	return hand.get_node_or_null("Fingers") as Node3D if hand != null else null
+
+
+## A named finger on an arm ("Pointer", "Thumb", ...), or null.
+func finger(arm_index: int, finger_name: String) -> Node3D:
+	var f := fingers_root(arm_index)
+	return f.get_node_or_null(finger_name) as Node3D if f != null else null
 
 
 func _add_joint(part: Node3D, thickness: float) -> void:
@@ -240,6 +444,7 @@ func _physics_process(delta: float) -> void:
 		var arm: Dictionary = arm_v
 		_simulate_arm(arm, delta)
 		_apply_grab_pull(arm)
+		_update_curl(arm, delta)
 		_update_visual(arm)
 
 	# Ramming an extended fist into enemies with momentum hurts them.
@@ -271,7 +476,10 @@ func _simulate_arm(arm: Dictionary, delta: float) -> void:
 	# constraints below still keep it in one solid piece.
 	if grabbed:
 		var target: Vector3 = arm["target"]
-		pts[last] += (target - pts[last]) * GRAB_REACH_LERP
+		var reach_lerp := GRAB_REACH_LERP
+		if arm["grabbed_body"] != null and is_instance_valid(arm["grabbed_body"]):
+			reach_lerp = CARRY_REACH_LERP
+		pts[last] += (target - pts[last]) * reach_lerp
 	elif _punch_mode and arm["extended"]:
 		# Punch mode: the arms hang loose at your sides — no raised
 		# guard pose (STO-CHARACTER-031). Only while the button is HELD
@@ -362,13 +570,27 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 		# point in front holds it still, which is what makes a throw
 		# repeatable AND keeps it out of the way of your aim.
 		var rb := body as RigidBody3D
+		# Hold it where the HAND actually is, not where the camera
+		# wishes it were (STO-CHARACTER-062).
+		#
+		# Steering it to a camera-relative point left it floating 0.75 m
+		# BEYOND the fingertips: the arm is a hanging Verlet chain that
+		# never fully straightens, so the hand always lagged the point
+		# it was aiming at, and the fingers had nothing within reach to
+		# close on. Taking the carry point from the hand's own knuckles
+		# means the object is always in the fingers' arc — and follows
+		# the hand exactly as the player moves, which is the point.
+		# Hand AND object aim at the SAME point, now that the arm is
+		# long enough to get there (STO-CHARACTER-062). While it was
+		# too short these had to differ, and the object ended up
+		# floating beyond the fingertips with nothing to close on.
 		var carry_p := _carry_point(shoulder)
+		arm["target"] = carry_p
 		var to_c: Vector3 = carry_p - rb.global_position
 		var vel: Vector3 = to_c * HOLD_STIFFNESS
 		if vel.length() > HOLD_MAX_SPEED:
 			vel = vel.normalized() * HOLD_MAX_SPEED
 		rb.linear_velocity = vel
-		arm["target"] = rb.global_position
 		return
 
 	# Grabbed something SOLID (wall, pillar, floor): the arm reels the
@@ -380,6 +602,18 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 	var d := to_anchor.length()
 	if d > SELF_PULL_STOP:
 		_player.grapple_pull += to_anchor / d * SELF_PULL
+
+
+## Just past the knuckles, in the fingers' arc — taken from the arm's
+## own chain, so it is where the hand IS this tick rather than where it
+## is heading.
+func _palm_point(arm: Dictionary) -> Vector3:
+	var pts: PackedVector3Array = arm["points"]
+	var wrist: Vector3 = pts[2]
+	var knuckles: Vector3 = pts[3]
+	var dir := knuckles - wrist
+	dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+	return knuckles + dir * (FINGER_LEN * 0.45 * arm_scale)
 
 
 ## Where a held thing floats: out in front of the EYE, not the hips.
@@ -396,6 +630,143 @@ func _carry_point(shoulder: Vector3) -> Vector3:
 	fwd.y = 0.0
 	fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
 	return shoulder + fwd * HOLD_DIST
+
+
+## Drive the fingers each tick (STO-CHARACTER-059 / 060).
+##
+## One number decides the whole hand shape, and where it comes from
+## says what the hand is doing:
+##   punch mode        -> clenched fist
+##   holding an object -> wrapped around it, loosely for a big one
+##   gripping a wall   -> closed hard
+##   holding nothing   -> relaxed
+##
+## Eased toward rather than set, so changing mode is a motion.
+func _update_curl(arm: Dictionary, delta: float) -> void:
+	var idx := int(arm["index"])
+	var f := fingers_root(idx)
+	if f == null:
+		return
+	var body = arm["grabbed_body"] if bool(arm["grabbed"]) else null
+	var holding: bool = body != null and is_instance_valid(body)
+	var curls: Dictionary = arm.get("curls", {})
+
+	var sum := 0.0
+	var n := 0
+	for child in f.get_children():
+		var finger := child as Node3D
+		if finger == null:
+			continue
+		var target := REST_CURL
+		if _punch_mode:
+			target = FIST_CURL
+		elif holding:
+			# EVERY finger works out its OWN curl by sweeping until its
+			# tip meets the object (STO-CHARACTER-062). Recomputed every
+			# tick, so moving or turning re-fits the hand instead of
+			# dragging a pose decided when you grabbed it.
+			target = _contact_curl(finger, body as Node3D)
+		elif bool(arm["grabbed"]):
+			target = ANCHOR_CURL          # latched onto solid geometry
+		var cur := float(curls.get(finger.name, REST_CURL))
+		cur = move_toward(cur, target, CURL_SPEED * delta)
+		curls[finger.name] = cur
+		set_finger_curl(finger, cur)
+		sum += cur
+		n += 1
+	arm["curls"] = curls
+	# Kept for anything that wants one number for the whole hand.
+	arm["curl"] = sum / float(n) if n > 0 else REST_CURL
+
+
+## How far this finger can close before its tip meets `body`
+## (STO-CHARACTER-062).
+##
+## Sweeps the curl and stops one step before the fingertip would be
+## inside the object. Nothing is authored per object: the answer comes
+## from the object's own collision shape, so a bar, a crate and a
+## ragdoll all just work.
+func _contact_curl(finger: Node3D, body: Node3D) -> float:
+	if body == null:
+		return REST_CURL
+	for step in range(1, CONTACT_STEPS + 1):
+		var t := float(step) / float(CONTACT_STEPS)
+		if _point_in_body(body, _tip_world(finger, t)):
+			# One step back: the last curl that did NOT overlap.
+			return maxf(float(step - 1) / float(CONTACT_STEPS), GRIP_MIN_CURL)
+	return 1.0
+
+
+## Where this finger's tip would be at curl `t`, without moving
+## anything — the joint angles are the same ones set_finger_curl uses.
+func _tip_world(finger: Node3D, t: float) -> Vector3:
+	var c := clampf(t, 0.0, 1.0)
+	if finger.name == "Thumb":
+		c *= THUMB_CURL_SCALE
+	var seg := FINGER_LEN * arm_scale / float(FINGER_SEGMENTS)
+	var ang := 0.0
+	var local := Vector3.ZERO
+	for i in FINGER_SEGMENTS:
+		ang += c * float(FINGER_CURL_MAX[i])
+		local.z += seg * cos(ang)
+		local.y -= seg * sin(ang)
+	return finger.global_transform * local
+
+
+## Is a world point inside this body, judged from its collision shape?
+func _point_in_body(body: Node3D, p: Vector3) -> bool:
+	for ch in body.get_children():
+		var cs := ch as CollisionShape3D
+		if cs == null or cs.shape == null:
+			continue
+		var local := cs.global_transform.affine_inverse() * p
+		var sh := cs.shape
+		if sh is BoxShape3D:
+			var h: Vector3 = (sh as BoxShape3D).size * 0.5 + Vector3.ONE * CONTACT_MARGIN
+			if absf(local.x) < h.x and absf(local.y) < h.y and absf(local.z) < h.z:
+				return true
+		elif sh is SphereShape3D:
+			if local.length() < (sh as SphereShape3D).radius + CONTACT_MARGIN:
+				return true
+		elif sh is CapsuleShape3D:
+			var cap := sh as CapsuleShape3D
+			var half_h: float = maxf(cap.height * 0.5 - cap.radius, 0.0)
+			var flat := Vector3(local.x, clampf(local.y, -half_h, half_h), local.z)
+			if local.distance_to(Vector3(0.0, flat.y, 0.0)) < cap.radius + CONTACT_MARGIN:
+				return true
+	return false
+
+
+## How far the fingers close around a given object: they stop when
+## they reach it, so a big crate leaves them open and a small thing
+## lets them close right up (STO-CHARACTER-059).
+func _grip_curl_for(body: Node) -> float:
+	var r := _object_radius(body)
+	return clampf(1.0 - r / GRIP_OPEN_RADIUS, GRIP_MIN_CURL, 1.0)
+
+
+## Rough half-size of a body, from its collision shape where possible.
+func _object_radius(body: Node) -> float:
+	var node := body as Node3D
+	if node == null:
+		return 0.2
+	for c in node.get_children():
+		var cs := c as CollisionShape3D
+		if cs == null or cs.shape == null:
+			continue
+		var sh := cs.shape
+		if sh is BoxShape3D:
+			return (sh as BoxShape3D).size.length() * 0.5 * _node_scale(node)
+		if sh is SphereShape3D:
+			return (sh as SphereShape3D).radius * _node_scale(node)
+		if sh is CapsuleShape3D:
+			return (sh as CapsuleShape3D).radius * _node_scale(node)
+	return 0.2
+
+
+func _node_scale(node: Node3D) -> float:
+	var sc := node.global_transform.basis.get_scale()
+	return maxf(sc.x, maxf(sc.y, sc.z))
 
 
 func _update_visual(arm: Dictionary) -> void:

@@ -615,6 +615,9 @@ func _exit_ragdoll(instant := false) -> void:
 		return
 	var pelvis: Vector3 = _ragdoll.call("pelvis_position")
 	var headp: Vector3 = _ragdoll.call("head_position")
+	# Torn-off limbs stay in the world when the body gets up
+	# (STO-ENEMIES-012) — they belong to the floor now, not to us.
+	_ragdoll.call("release_detached")
 	_ragdoll.queue_free()
 	_ragdoll = null
 	global_position = Vector3(pelvis.x, pelvis.y + 0.1, pelvis.z)

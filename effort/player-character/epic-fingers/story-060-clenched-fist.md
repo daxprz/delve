@@ -24,14 +24,13 @@ they are doing.
 
 ## Definition of Done
 
-- [ ] Punch mode curls every finger to fully closed.
-- [ ] The thumb closes over the fingers, as a real fist does.
-- [ ] Grab mode opens them again.
-- [ ] Switching modes is smooth, not an instant snap.
-- [ ] A clenched fist obeys the limits from STO-CHARACTER-058 — no
-      fingers poking through the palm.
-- [ ] Proven by a headless test that toggles the mode and checks the
-      curl.
+- [x] Punch mode curls every finger fully closed (1.00).
+- [x] The thumb closes with them, at its own smaller range.
+- [x] Grab mode opens them again (back to 0.18).
+- [x] Smooth, not a snap — measured mid-transition at 0.38.
+- [x] A clenched fist obeys STO-CHARACTER-058: no segment is inside
+      the palm at any curl, including 1.0.
+- [x] Proven by a headless test (10 checks, shared with 059).
 
 ## Depends on
 

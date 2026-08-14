@@ -105,6 +105,13 @@ func _physics_process(_d: float) -> bool:
 			_check(_arm.global_position.y < 1.5,
 					"the loose arm falls to the floor (y %.2f -> %.2f)"
 					% [_arm_pos.y, _arm.global_position.y])
+			# After 3 s the enemy may legitimately have got back up, which
+			# frees the ragdoll — the severed arm must outlive it either
+			# way, and that is what was just checked. The body-stability
+			# checks only mean anything while the body still exists.
+			if not is_instance_valid(_rag):
+				_check(true, "the arm outlived the body getting back up")
+				return _finish()
 			# The rest of the body must not have exploded where the arm
 			# was — delve has been bitten by joint instability before.
 			var pelvis: RigidBody3D = _rag.call("part", "Pelvis")

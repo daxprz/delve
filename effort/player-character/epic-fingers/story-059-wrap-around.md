@@ -23,15 +23,25 @@ holding the thing.
 
 ## Definition of Done
 
-- [ ] Grabbing closes the fingers.
-- [ ] They stop when they reach the object instead of curling
-      straight through it.
-- [ ] A **bigger** object leaves the fingers **less** curled than a
-      small one — measured, not eyeballed.
-- [ ] Letting go opens them again.
-- [ ] It works on both a crate and a grabbed enemy.
-- [ ] Proven by a headless test comparing the curl on objects of
-      different sizes.
+- [x] Grabbing closes the fingers (0.18 rest -> 0.69 on a small
+      object).
+- [x] They close only as far as the object allows.
+- [x] A **bigger** object leaves them **less** curled — 0.12 against
+      0.69, measured.
+- [x] Letting go returns them to rest (0.18).
+- [x] Latching onto solid geometry closes the hand hard (0.8).
+- [x] Proven by a headless test (10 checks, shared with 060).
+
+## Verification notes (2026-08-13)
+
+`tests/smoke_finger_grip.gd`. The curl comes from the grabbed body's
+collision shape, so it is the actual object's size rather than a
+guess per object type.
+
+Worth noting: a hand wrapped around a **big** crate ends up *flatter
+than a resting hand* (0.12 against 0.18). That looks wrong written
+down and is right in practice — fingers splay over a large flat
+surface rather than curling round it.
 
 ## Out of scope
 

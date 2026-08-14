@@ -153,6 +153,36 @@ func detach(part_name: String) -> bool:
 	return true
 
 
+## Hand any torn-off limbs to our parent so they OUTLIVE the ragdoll
+## (STO-ENEMIES-012).
+##
+## When an enemy gets back up the whole ragdoll is freed — and that
+## used to take severed limbs with it, so an arm you had torn off
+## popped out of existence the moment its owner stood. A limb on the
+## floor belongs to the world, not to the body it came from.
+func release_detached() -> Array:
+	var freed: Array = []
+	var host := get_parent()
+	if host == null:
+		return freed
+	for pname in _detached.keys():
+		var rb := _parts.get(pname) as RigidBody3D
+		if rb == null or not is_instance_valid(rb):
+			continue
+		var xform := rb.global_transform
+		var vel := rb.linear_velocity
+		var spin := rb.angular_velocity
+		remove_child(rb)
+		host.add_child(rb)
+		rb.global_transform = xform
+		rb.linear_velocity = vel
+		rb.angular_velocity = spin
+		_parts.erase(pname)
+		freed.append(rb)
+	_detached.clear()
+	return freed
+
+
 func is_detached(part_name: String) -> bool:
 	return _detached.has(part_name)
 

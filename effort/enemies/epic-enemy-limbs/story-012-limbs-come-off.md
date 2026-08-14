@@ -50,6 +50,26 @@ the forearm with it.
   and the Grabber's punch both pass a real hit point and can take
   limbs off; the tail stays out of that path on purpose.
 
+## A severed limb used to vanish when its owner stood up (2026-08-13)
+
+Found while building the fingers, of all things: extending an unrelated
+test's wait from 1.5 s to 3 s pushed it past the point where a downed
+enemy gets back up — and `_exit_ragdoll` frees the whole ragdoll,
+**including limbs that had been torn off it**.
+
+So an arm you had ripped off popped out of existence the moment its
+owner stood, which flatly contradicts this story's "the detached part
+falls, lands, and stays there".
+
+Fixed with `Ragdoll.release_detached()`: severed parts are handed to
+the ragdoll's parent, keeping their transform and velocity, before the
+ragdoll is freed. A limb on the floor belongs to the world, not to the
+body it came off.
+
+Worth remembering: the bug had been there since this story shipped and
+no test caught it, because every test looked at the limb within a
+second and a half — well inside the window before an enemy stands.
+
 ## Verification notes (2026-08-07)
 
 `tests/smoke_enemy_limbs.gd`, 18 checks.
