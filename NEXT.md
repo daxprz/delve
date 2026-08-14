@@ -1,6 +1,6 @@
 # Where we're up to
 
-Last updated 2026-08-13. Everything below is committed and pushed.
+Last updated 2026-08-14. Everything below is committed and pushed.
 
 ---
 
@@ -8,82 +8,64 @@ Last updated 2026-08-13. Everything below is committed and pushed.
 
 Restart Play first — a running game keeps the old code.
 
-1. **The Grabber's hands.** Five fingers now. Pick something up with
-   `RMB` and watch them close around it.
-2. **The tail.** Turned down twice; ~6 solid hits to kill instead of 2.
-   **Is that right, or still wrong?** Story 052 can't close until you
-   say.
-3. **Throwing.** Grab a crate — it should sit out in front where you
-   can aim. **Easier now?** Story 055 needs your yes.
-4. **Enemies fight back.** They rear back before swinging, so you can
-   step away. There is no block or dodge any more — footwork only.
-5. **Limbs come off.** Shoot an enemy in the head with the Sniper.
+1. **The giant spider.** Towers over you on three-jointed X-shaped
+   legs, and every step it takes is different. It crawls; feet plant
+   and push rather than sliding.
+2. **The Runner's claws** — `LMB` / `RMB`. Damage is **100% momentum**:
+   0.10 standing, 0.25 walking, 0.50 sprinting, **1.00 dashing**. You
+   have to keep moving to hurt anything.
+3. **Double-tap `W`** to dash.
+4. **The Grabber's piston** — `F` locks the arms together, hold both
+   mouse buttons to charge, release to launch. Enemies ragdoll;
+   **players keep control**, so you can fire a Runner across the map.
+5. **The Grabber's hands** — five fingers that wrap what you pick up
+   and keep hold as you move.
 
 ---
 
-## 🔨 Waiting on a decision from you
+## 🔨 Asked for, written down, NOT built
 
-**What should the new enemy kinds DO?** Some ideas, but yours are
-better:
-
-- a fast weak one that rushes you
-- a big slow tough one that hits hard
-- one that hangs back and darts in
-- one that splits in two when you hit it
-
-Plus **a boss** — you already said you want one.
-
-The plan: build an **enemy registry** first (a list of enemy kinds,
-like `CharacterDB` is for players). Then each new enemy is a small
-story instead of a rewrite, and the boss is just another entry in the
-list. That is why the registry comes first.
-
----
-
-## 🧩 One thing left unfinished
-
-**STO-CHARACTER-062** — fingers wrap around things, but a **big crate
-and a small block still close the fingers the same amount**. The test
-`smoke_finger_grip` is deliberately left FAILING rather than loosened,
-because that check is the whole point of the story.
-
-Everything else about the hands works.
-
----
-
-## ✅ Done recently
-
-| what | story |
+| # | what |
 |---|---|
-| Player names, remembered between sessions | STO-UI-006 |
-| Version watermark, top-right corner | STO-UI-007 |
-| App bundles report the real version | STO-TOOLS-010 |
-| Enemies attack you | STO-ENEMIES-011 |
-| Limbs can be torn off | STO-ENEMIES-012 |
-| Head off = instant death | STO-ENEMIES-013 |
-| One leg = limp, both = dead | STO-ENEMIES-014 |
-| One arm = weak, both = harmless | STO-ENEMIES-015 |
-| Dead bodies stay | STO-ENEMIES-016 |
-| Tail hits softer | STO-CHARACTER-052 |
-| Things held out in front | STO-CHARACTER-054 |
-| RMB picks up and holds out | STO-CHARACTER-055 |
-| C and G do nothing | STO-CHARACTER-056 |
-| Five procedural fingers | STO-CHARACTER-057 |
-| Fingers bend like real fingers | STO-CHARACTER-058 |
-| Fingers wrap / fist clenches | STO-CHARACTER-059 / 060 |
-| Thicker, simpler fingers | STO-CHARACTER-061 |
+| **STO-CHARACTER-068** | the piston as a real extending shaft you can stand on — *"we'll work on this later"* |
+| **STO-COMBAT-004** | a thrown object hurts what it hits — **the shared impact rule the rest need** |
+| **STO-COMBAT-005** | smashing a held enemy into a wall hurts it |
+| **STO-COMBAT-006** | hitting an enemy with an enemy hurts both |
+| **STO-COMBAT-007** | `E` crushes the body part you are holding |
+| **a boss** | you asked for one; it is an entry in the enemy registry now |
 
-**Released:** v0.1.11 is the latest build on GitHub.
-Everyone playing together must be on the **same version** — the number
-in the top-right corner tells you which.
+---
+
+## 🧩 Unfinished, with the reason written down
+
+- **STO-ENEMIES-024 — wall climbing.** It works: the spider detects a
+  wall and climbs y 1.0 -> 3.3. Then it **stalls** partway up and I do
+  not know why. Only the spider climbs, and that IS asserted.
+- **STO-CHARACTER-067 — the piston in multiplayer is unverified.** The
+  RPC is written; no two-instance test exists. That is the half most
+  likely to be wrong.
+- **STO-ENEMIES-023** — without foot IK the spider's feet rise and fall
+  slightly across a stride.
 
 ---
 
 ## 🛠️ Jobs for me, not you
 
-- **STO-TOOLS-009** — 22 tests still can't run while you have the game
-  open, because they need port 7777. This already bit us: **two tests
-  were failing in v0.1.9 and nobody knew**, because they never ran.
-- **STO-CORE-007 / STO-ENEMIES-012** — both had bugs that hid for
-  months behind tests that measured the wrong thing. Worth remembering
-  the pattern.
+- **STO-TOOLS-009** — ~21 tests still cannot run while you have the
+  game open, because they need port 7777. This already bit us once:
+  **two tests failed in v0.1.9 and nobody knew**, because they never
+  ran.
+- `smoke_limb_effects` fails only under suite load; passes 3/3 alone.
+
+---
+
+## ✅ Shipped since v0.1.11
+
+Enemy kinds registry · the giant spider (X legs, unique steps,
+partial climbing) · the Runner's dash and momentum claws · the
+Grabber's piston · procedural fingers that wrap and grip · the
+spider ragdoll crash fix.
+
+**Not released yet** — v0.1.11 is still the newest build. A release
+would need the version bumped in `project.godot` first; CI fails the
+build if it disagrees with the tag.

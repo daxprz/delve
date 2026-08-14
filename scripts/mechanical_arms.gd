@@ -101,9 +101,13 @@ const GRIP_MIN_CURL := 0.12
 ## How finely each finger sweeps for the object's surface. 16 steps is
 ## about 6 degrees of knuckle per step — finer than anyone can see.
 const CONTACT_STEPS := 16
-## Stop a fingertip's width short of the surface, so fingers rest ON
-## an object rather than in it.
-const CONTACT_MARGIN := 0.045
+## How far short of the surface a fingertip stops (STO-CHARACTER-064).
+##
+## Was 0.045 — plus the sweep stopping one whole step early, that left
+## a visible gap and a held crate looked like it was floating in a
+## claw. Now just under half a finger's thickness, so the tips rest ON
+## the surface without sinking into it.
+const CONTACT_MARGIN := 0.02
 ## How far below the hand's centre line a held object rests — the palm
 ## side, where the fingers actually close.
 const GRIP_PALM_Y := -0.20
@@ -734,8 +738,11 @@ func _contact_curl(finger: Node3D, body: Node3D) -> float:
 	for step in range(1, CONTACT_STEPS + 1):
 		var t := float(step) / float(CONTACT_STEPS)
 		if _point_in_body(body, _tip_world(finger, t)):
-			# One step back: the last curl that did NOT overlap.
-			return maxf(float(step - 1) / float(CONTACT_STEPS), GRIP_MIN_CURL)
+			# Half a step back, not a whole one: a full step left the
+			# tip visibly short of what it was holding
+			# (STO-CHARACTER-064).
+			return maxf((float(step) - 0.5) / float(CONTACT_STEPS),
+					GRIP_MIN_CURL)
 	return 1.0
 
 
