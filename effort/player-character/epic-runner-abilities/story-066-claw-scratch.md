@@ -19,9 +19,22 @@ the other. A single press is a light flick — **0.25 damage**. But the
 faster you click, the faster it swings AND the harder each scratch
 lands.
 
-**Every scratch does 0.25, always.** The damage never builds up. What
-spamming buys you is *more scratches per second* — and different
-**effects** as you go faster.
+**Damage comes entirely from MOMENTUM** — how fast the Runner is
+moving when the claw lands:
+
+| moving | damage |
+|---|---|
+| standing still | **0.10** |
+| walking (5.0) | **0.25** |
+| sprinting (8.0) | **0.50** |
+| dashing (21.0) | **1.00** |
+
+Interpolated between those, not stepped, so every speed in between
+gets its own honest value and there is no threshold to sit just above.
+
+Clicking faster never makes a hit bigger — **moving** faster does. And
+there is barely any shove, so a target stays where it is while you
+shred it.
 
 That is the whole shape of the weapon: your damage per second is
 however fast you can press, but no single hit ever gets big. Very

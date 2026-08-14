@@ -149,18 +149,38 @@ const PUSH_LOCK := 0.16
 var _push_lock := 0.0
 var _pre_move_velocity := Vector3.ZERO
 # --- Runner claws (STO-CHARACTER-066) --------------------------------
-## EVERY scratch does this much, however fast you click. The damage
-## never stacks: spamming buys you more scratches per second, not
-## bigger ones. Your damage output is however fast you can press, but
-## no single hit is ever big.
-const SCRATCH_DAMAGE := 0.25
+## Scratch damage comes ENTIRELY from momentum (STO-CHARACTER-066):
+## how fast the Runner is actually travelling when the claw lands.
+## Clicking faster still does not make a hit bigger — MOVING faster
+## does. Stand still and you barely scratch; land one mid-dash and it
+## really bites.
+##
+##   standing   0.10
+##   walking    0.25   (the Runner walks at 5.0)
+##   sprinting  0.50   (8.0)
+##   dashing    1.00   (21.0)
+##
+## Interpolated between those anchors rather than stepped, so every
+## speed in between gets its own honest value — 100% momentum, with no
+## thresholds to game.
+const SCRATCH_STILL := 0.10
+const SCRATCH_WALK := 0.25
+const SCRATCH_SPRINT := 0.50
+const SCRATCH_DASH := 1.00
 const SCRATCH_RANGE := 2.6
 ## No enforced cooldown — the limit is how fast a person can click.
 ## This only stops one press registering twice in a frame.
 const SCRATCH_MIN_GAP := 0.02
-## Click rate is measured over this window, and drives the EFFECTS
-## (how hard it shoves, how it sounds) — never the damage.
+## Click rate is measured over this window. It drives nothing but the
+## debug read-out now — see SCRATCH_SHOVE.
 const SCRATCH_RATE_WINDOW := 1.0
+## Barely a nudge, and CONSTANT (STO-CHARACTER-066).
+##
+## The shove used to grow with how fast you clicked, which pushed the
+## enemy straight out of reach — so fast clawing shoved a target away
+## rather than shredding it, and the weapon fought itself. Claws should
+## rake, not punch.
+const SCRATCH_SHOVE := 0.35
 var _scratch_times: Array = []
 var _scratch_cd := 0.0
 var _scratches := 0
@@ -454,24 +474,43 @@ func do_scratch(side: int) -> bool:
 			and now - float(_scratch_times[0]) > SCRATCH_RATE_WINDOW:
 		_scratch_times.remove_at(0)
 
+	var dmg := scratch_damage()
 	var target := _nearest_enemy(SCRATCH_RANGE)
 	if target == null:
 		return true                    # a swipe at nothing still swings
 	# The DAMAGE is flat. Only the shove grows with how fast you are
 	# clicking, so fast clawing feels frantic without ever hitting hard.
 	if target.has_method("take_damage"):
-		target.call("take_damage", SCRATCH_DAMAGE)
+		target.call("take_damage", dmg)
 	if target.has_method("apply_knockback"):
 		var away: Vector3 = (target as Node3D).global_position - global_position
 		away.y = 0.0
 		if away.length() > 0.001:
-			var shove: float = 1.0 + minf(float(scratch_rate()) * 0.15, 2.0)
-			target.call("apply_knockback",
-					away.normalized() * (2.0 * shove) + Vector3.UP * 0.6)
+			# Constant and tiny, whatever the click rate.
+			target.call("apply_knockback", away.normalized() * SCRATCH_SHOVE)
 	DebugOverlay.log("player/abilities", self,
-			"%s: scratch %d for %.2f (rate %.1f/s)",
-			[name, side, SCRATCH_DAMAGE, scratch_rate()])
+			"%s: scratch %d for %.2f (moving %.1f m/s)",
+			[name, side, dmg, Vector2(velocity.x, velocity.z).length()])
 	return true
+
+
+## What a scratch is worth RIGHT NOW, from how fast we are moving.
+##
+## Piecewise so it passes exactly through the four speeds that were
+## asked for, and continuous so there is no threshold to sit just
+## above. A dash carries its full value even as it ends, because the
+## claw lands at the speed the body is actually going.
+func scratch_damage() -> float:
+	var spd := Vector2(velocity.x, velocity.z).length()
+	if spd <= 0.01:
+		return SCRATCH_STILL
+	if spd <= _speed:
+		return lerpf(SCRATCH_STILL, SCRATCH_WALK, spd / _speed)
+	if spd <= _sprint_speed:
+		return lerpf(SCRATCH_WALK, SCRATCH_SPRINT,
+				(spd - _speed) / maxf(_sprint_speed - _speed, 0.001))
+	return lerpf(SCRATCH_SPRINT, SCRATCH_DASH,
+			minf((spd - _sprint_speed) / maxf(DASH_SPEED - _sprint_speed, 0.001), 1.0))
 
 
 ## Scratches per second over the last second — drives the EFFECTS.
