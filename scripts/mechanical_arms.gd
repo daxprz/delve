@@ -875,7 +875,9 @@ func _update_grab_input() -> void:
 		return
 	# E toggles grab-mode / punch-mode (STO-CHARACTER-007).
 	if Input.is_action_just_pressed("toggle_arm_mode"):
-		set_punch_mode(not _punch_mode)
+		# CYCLE, not flip: there are three modes now, and flipping a
+		# bool could only ever reach two of them (STO-CHARACTER-069).
+		toggle_mode()
 
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	for i in range(_arms.size()):
@@ -1000,15 +1002,9 @@ func total_length(i: int) -> float:
 # Punch mode — STO-CHARACTER-007 / 008 / 009
 # ---------------------------------------------------------------------
 
+## Kept so older callers and tests still work; goes through set_mode.
 func set_punch_mode(on: bool) -> void:
-	_punch_mode = on
-	if on:
-		# You can't hold a grab while punching — let go of everything
-		# (including any enemy being carried, so it isn't left limp).
-		for i in range(_arms.size()):
-			_let_go(_arms[i])
-	_update_fist_look()
-	print("[ARMS] mode = %s" % ("PUNCH" if on else "GRAB"))
+	set_mode(MODE_PUNCH if on else MODE_GRAB)
 
 
 ## Make the switch noticeable (but not loud): the fists take on a warm
@@ -1016,7 +1012,13 @@ func set_punch_mode(on: bool) -> void:
 func _update_fist_look() -> void:
 	if _fist_mat == null:
 		return
-	if _punch_mode:
+	if _mode == MODE_PISTON:
+		# Cold blue-white: the arms are one shaft, not two fists.
+		_fist_mat.albedo_color = Color(0.55, 0.68, 0.85)
+		_fist_mat.emission_enabled = true
+		_fist_mat.emission = Color(0.4, 0.7, 1.0)
+		_fist_mat.emission_energy_multiplier = 0.8
+	elif _punch_mode:
 		_fist_mat.albedo_color = Color(0.8, 0.42, 0.32)
 		_fist_mat.emission_enabled = true
 		_fist_mat.emission = Color(0.95, 0.4, 0.2)
@@ -1026,8 +1028,38 @@ func _update_fist_look() -> void:
 		_fist_mat.emission_enabled = false
 
 
+## THREE modes now, cycled by E (STO-CHARACTER-069):
+##   GRAB -> PUNCH -> PISTON -> GRAB
+##
+## The piston used to be a separate F toggle sitting ON TOP of grab
+## mode, so the arms were somehow gripping and pistoning at once. It is
+## a proper mode: while it is on, the arms neither grab nor punch.
+const MODE_GRAB := 0
+const MODE_PUNCH := 1
+const MODE_PISTON := 2
+var _mode := MODE_GRAB
+
+
 func toggle_mode() -> void:
-	set_punch_mode(not _punch_mode)
+	set_mode((_mode + 1) % 3)
+
+
+func set_mode(m: int) -> void:
+	_mode = clampi(m, MODE_GRAB, MODE_PISTON)
+	# Nothing may stay held through a mode change.
+	for i in range(_arms.size()):
+		_let_go(_arms[i])
+	_punch_mode = _mode == MODE_PUNCH
+	_update_fist_look()
+	print("[ARMS] mode = %s" % ["GRAB", "PUNCH", "PISTON"][_mode])
+
+
+func arm_mode() -> int:
+	return _mode
+
+
+func is_piston_mode() -> bool:
+	return _mode == MODE_PISTON
 
 
 func is_punch_mode() -> bool:

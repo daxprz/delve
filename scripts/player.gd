@@ -570,7 +570,12 @@ func dash_count() -> int:
 
 ## Lock the arms together, or unlock them (STO-CHARACTER-067).
 func toggle_piston() -> bool:
-	_piston_mode = not _piston_mode
+	var arms := get_node_or_null("MechanicalArms")
+	if arms != null and arms.has_method("set_mode"):
+		arms.call("set_mode", 0 if bool(arms.call("is_piston_mode")) else 2)
+		_piston_mode = bool(arms.call("is_piston_mode"))
+	else:
+		_piston_mode = not _piston_mode
 	_piston_charge = 0.0
 	DebugOverlay.log("player/abilities", self, "%s: piston %s",
 			[name, "ON" if _piston_mode else "off"])
@@ -1246,8 +1251,12 @@ func _update_abilities() -> void:
 	# outright rather than moved, so F belongs to one thing and cannot
 	# feel like the pull "randomly stopped working". do_pull() is
 	# unhooked, not deleted — rebinding it is one line, same as C and G.
-	if _has_ability("piston") and Input.is_action_just_pressed("ability_pull"):
-		toggle_piston()
+	# Piston mode is one of the ARMS' three modes now, cycled with E
+	# (STO-CHARACTER-069) — F no longer toggles it separately, because
+	# a mode that sits on top of another mode is not a mode.
+	var arms := get_node_or_null("MechanicalArms")
+	_piston_mode = arms != null and arms.has_method("is_piston_mode") \
+			and bool(arms.call("is_piston_mode"))
 	if _piston_mode:
 		_update_piston(get_physics_process_delta_time())
 	# Keep a held object floating in front of the Grabber.
