@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: character
 size: S
-status: draft
+status: shipped
 date: 2026-08-13
 depends-on: []
 bd-id: delve-6tk
+shipped: 2026-08-13
+tasks: 6
+complete: 6
 ---
 
 # A held thing is held out in front, not hugged to the player
@@ -35,14 +38,21 @@ the same problem.
 
 ## Definition of Done
 
-- [ ] A held object floats **out in front** of the player, clearly
-      away from the body.
-- [ ] It is held at around eye level, not knee level.
-- [ ] It follows where you look, including up and down.
-- [ ] Throwing still sends it where you are aiming.
-- [ ] A grabbed **enemy** is carried out in front the same way.
-- [ ] Proven by a headless test that measures the distance and height
-      rather than trusting the constants.
+- [x] A held object floats **out in front** — 2.40 m from the eye.
+- [x] It is held at eye level (0.02 m off the eye line, against
+      1.28 m below it before).
+- [x] It follows where you look: looking up 35 degrees lifts it above
+      the eye line.
+- [x] Throwing still sends it where you are aiming.
+- [x] A grabbed **enemy** is carried out in front the same way.
+- [x] Proven by a headless test that measures where the object
+      actually is, not what the constants say (9 checks).
+
+## Verification notes (2026-08-13)
+
+`tests/smoke_hold_out_front.gd`, 9 checks. Teeth-checked by restoring
+the old carry point: **4 checks fail**, including "1.28 m below eye",
+which is the operator's complaint stated as a number.
 
 ## Out of scope
 

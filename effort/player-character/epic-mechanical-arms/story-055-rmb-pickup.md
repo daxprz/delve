@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: character
 size: S
-status: draft
+status: shipped
 date: 2026-08-13
 depends-on: []
 bd-id: delve-6dy
+shipped: 2026-08-13
+tasks: 7
+complete: 7
 ---
 
 # RMB picks things up and holds them out
@@ -46,16 +49,27 @@ player.**
 
 ## Definition of Done
 
-- [ ] RMB on a loose object picks it up.
-- [ ] It is held out in front, clearly away from the body.
-- [ ] It is held near eye level, and follows where you look, up and
-      down.
-- [ ] Releasing RMB lets go of it.
-- [ ] It is never dragged into the player — the one thing that has
-      been wrong in every version so far.
-- [ ] Carrying a limp **enemy** still works.
-- [ ] Proven by a headless test that measures where the object
-      actually is, not what the constants say.
+- [x] RMB on a loose object picks it up.
+- [x] It is held out in front — 2.40 m from the eye, dead centre of
+      view.
+- [x] Held at eye level (0.00 m off the eye line) and follows the
+      look direction up and down.
+- [x] Releasing RMB lets go, and the object then falls like anything
+      else rather than hanging in the air.
+- [x] It is never dragged into the player — 2.88 m away while held.
+- [x] Carrying a limp **enemy** uses the same carry point.
+- [x] Proven by a headless test measuring the real position
+      (10 checks).
+
+## Verification notes (2026-08-13)
+
+`tests/smoke_rmb_pickup.gd`, 10 checks.
+
+`smoke_grab_box.gd` was rewritten to guard the ONE thing that has
+survived all three versions of this behaviour — never dragged into the
+player — rather than re-asserting whichever variant is current. That
+assertion has now outlived two rewrites, which is a fair sign it is
+the real requirement and the rest was detail.
 
 ## Out of scope
 

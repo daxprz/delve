@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: character
 size: S
-status: draft
+status: shipped
 date: 2026-08-13
 depends-on: []
 bd-id: delve-ksq
+shipped: 2026-08-13
+tasks: 6
+complete: 6
 ---
 
 # C and G do nothing

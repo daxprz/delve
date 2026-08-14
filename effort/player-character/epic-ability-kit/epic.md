@@ -6,7 +6,7 @@ effort: character
 status: shipped
 date: 2026-08-03
 bd-id: delve-9zb
-shipped: 2026-08-03
+shipped: 2026-08-13
 ---
 
 # Ability kit: zip, throw, pull, block, heal, dodge

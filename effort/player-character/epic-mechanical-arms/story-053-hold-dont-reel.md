@@ -4,10 +4,13 @@ parent: ./epic.md
 kind: story
 effort: character
 size: S
-status: in-progress
+status: shipped
 date: 2026-08-07
 depends-on: []
 bd-id: delve-lsc
+shipped: 2026-08-13
+tasks: 8
+complete: 7
 ---
 
 # A grabbed crate stays where it is instead of being reeled in
@@ -96,3 +99,7 @@ guessed "held floating in front of you" and was **wrong** — the
 operator corrected it to "stays where it is". Recorded because it is
 exactly why the read-back step exists: the wrong version would have
 been built and it would have looked reasonable.
+
+## Status notes
+
+- 2026-08-13: Closed with --force; 1/8 DoD boxes unchecked. Reason: Superseded by STO-CHARACTER-055; shipped and then replaced after play-testing
