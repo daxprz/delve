@@ -12,11 +12,14 @@ const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const MirrorScript := preload("res://scripts/mirror.gd")
 const CharacterDB := preload("res://scripts/characters.gd")
 
-## Where enemies start.
+## Where enemies start, and WHICH KIND each one is (STO-ENEMIES-017).
+## Index into EnemyKinds.LIST: 0 = Walker, 1 = Crawler.
 const ENEMY_SPAWNS: Array = [
-	Vector3(7.0, 1.0, 6.0),
-	Vector3(-7.0, 1.0, 5.0),
-	Vector3(0.0, 1.0, -12.0),
+	{"at": Vector3(7.0, 1.0, 6.0), "kind": 0},
+	{"at": Vector3(-7.0, 1.0, 5.0), "kind": 0},
+	{"at": Vector3(0.0, 1.0, -12.0), "kind": 0},
+	{"at": Vector3(5.0, 1.0, -6.0), "kind": 1},
+	{"at": Vector3(-5.0, 1.0, -9.0), "kind": 1},
 ]
 
 ## Players arrive spread around a ring rather than stacked on one
@@ -140,9 +143,13 @@ func _spawn_enemies() -> void:
 	for c in container.get_children():
 		c.queue_free()
 	for i in ENEMY_SPAWNS.size():
+		var spawn: Dictionary = ENEMY_SPAWNS[i]
 		var enemy: CharacterBody3D = ENEMY_SCENE.instantiate()
 		enemy.name = "Enemy%d" % i
-		enemy.position = ENEMY_SPAWNS[i]
+		# Set BEFORE adding to the tree: the spawner replicates it with
+		# the spawn, so every peer builds the same creature.
+		enemy.set("kind", int(spawn["kind"]))
+		enemy.position = spawn["at"]
 		container.add_child(enemy, true)
 
 

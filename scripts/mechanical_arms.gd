@@ -28,14 +28,16 @@ const PART_NAMES: PackedStringArray = ["UpperArm", "Forearm", "Hand"]
 @export var shoulder_offset: Vector3 = Vector3(0.28, 1.4, 0.0)
 
 # --- Limb dimensions (metres, before arm_scale) ---
-## Lengthened (STO-CHARACTER-062) so the Grabber can hold something
-## out at EYE LEVEL with its fingers still around it. At 0.90/0.78 the
-## arm reached 2.02 to the knuckles against a 2.40 carry point — it
-## could never catch what it was carrying, so the fingers closed on
-## air. The operator chose longer arms over giving either up.
-const UPPER_LEN := 1.20
+## Back to the original length (STO-CHARACTER-062). They were briefly
+## lengthened to 1.20/1.05 so the hand could reach a distant carry
+## point — but at 2.25 m the arms are LONGER THAN THE PLAYER IS TALL
+## (shoulder at 1.40), so they hit the floor and crumpled, leaving the
+## resting fist ABOVE the shoulder. The real fix was elsewhere: pull
+## harder while carrying (CARRY_REACH_LERP) and hold the object in the
+## palm, not on the hand's centre line.
+const UPPER_LEN := 0.90
 const UPPER_TH := 0.28
-const FORE_LEN := 1.05
+const FORE_LEN := 0.78
 const FORE_TH := 0.22
 const HAND_LEN := 0.34   # wrist -> knuckles (the palm block)
 const FIST_TH := 0.40    # fists are chunky
@@ -102,6 +104,9 @@ const CONTACT_STEPS := 16
 ## Stop a fingertip's width short of the surface, so fingers rest ON
 ## an object rather than in it.
 const CONTACT_MARGIN := 0.045
+## How far below the hand's centre line a held object rests — the palm
+## side, where the fingers actually close.
+const GRIP_PALM_Y := -0.20
 ## How far each joint bends at full curl, base -> tip. The base knuckle
 ## bends least: a finger whose joints all bend equally curls into a
 ## hoop rather than a fist.
@@ -548,14 +553,28 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 	# impulse-based reel cannot move ~60 kg of jointed ragdoll.
 	if enemy != null and is_instance_valid(enemy) \
 			and body != null and is_instance_valid(body) and body is RigidBody3D:
+		# A limp enemy is hauled to a PLAYER-relative point, not a
+		# hand-relative one. The hand lags as it swings, so steering
+		# 60 kg of jointed body toward a point that is itself lagging
+		# compounded the delay and the body trailed further and further
+		# behind (STO-CHARACTER-063). The fingers still find it: the
+		# palm now turns to face whatever it holds.
 		var carry := _carry_point(shoulder)
 		var to_carry: Vector3 = carry - (body as RigidBody3D).global_position
 		var v: Vector3 = to_carry * HOLD_STIFFNESS
 		if v.length() > HOLD_MAX_SPEED:
 			v = v.normalized() * HOLD_MAX_SPEED
 		(body as RigidBody3D).linear_velocity = v
-		# Hand stays stuck to whatever we're carrying.
-		arm["target"] = (body as RigidBody3D).global_position
+		# Aim the knuckles a palm's depth SHORT of the body, not at its
+		# centre. Aimed dead at it, the body sat on the hand's centre
+		# line while the fingers swept below — they closed on nothing
+		# and every finger reached full curl (STO-CHARACTER-063). The
+		# palm already turns to face it, so backing off along the line
+		# to the hand puts the body squarely in the fingers' arc.
+		var bpos: Vector3 = (body as RigidBody3D).global_position
+		var back := shoulder - bpos
+		back = back.normalized() if back.length() > 0.001 else Vector3.UP
+		arm["target"] = bpos + back * (absf(GRIP_PALM_Y) * arm_scale)
 		return
 
 	if body != null and is_instance_valid(body) and body is RigidBody3D:
@@ -584,8 +603,10 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 		# long enough to get there (STO-CHARACTER-062). While it was
 		# too short these had to differ, and the object ended up
 		# floating beyond the fingertips with nothing to close on.
-		var carry_p := _carry_point(shoulder)
-		arm["target"] = carry_p
+		# The ARM aims out in front at eye level; the OBJECT sits in the
+		# palm, on the side the fingers curl toward.
+		arm["target"] = _carry_point(shoulder)
+		var carry_p := _grip_point(arm)
 		var to_c: Vector3 = carry_p - rb.global_position
 		var vel: Vector3 = to_c * HOLD_STIFFNESS
 		if vel.length() > HOLD_MAX_SPEED:
@@ -602,6 +623,27 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 	var d := to_anchor.length()
 	if d > SELF_PULL_STOP:
 		_player.grapple_pull += to_anchor / d * SELF_PULL
+
+
+## Where a held thing sits: in the PALM, on the side the fingers curl
+## toward (STO-CHARACTER-062).
+##
+## Held on the hand's centre line it ended up at y +0.09 while the
+## fingers swept from -0.12 down to -0.33 — they passed underneath it
+## and never touched, which is why a big crate and a small block closed
+## the fingers identically. A hand holds things against its palm, and
+## the palm is the finger side.
+##
+## Taken from the hand's own transform, so it follows the hand exactly
+## as the player moves, turns and looks around.
+func _grip_point(arm: Dictionary) -> Vector3:
+	var root: Node3D = arm["root"]
+	var hand := root.get_node_or_null("Hand") as Node3D
+	if hand == null:
+		return _palm_point(arm)
+	return hand.global_transform * Vector3(0.0,
+			GRIP_PALM_Y * arm_scale,
+			(HAND_LEN + FINGER_LEN * 0.38) * arm_scale)
 
 
 ## Just past the knuckles, in the fingers' arc — taken from the arm's
@@ -772,20 +814,43 @@ func _node_scale(node: Node3D) -> float:
 func _update_visual(arm: Dictionary) -> void:
 	var pts: PackedVector3Array = arm["points"]
 	var root: Node3D = arm["root"]
+	# While holding something, roll the HAND so its palm faces what it
+	# is holding — otherwise the fingers curl away from it.
+	var palm := Vector3.INF
+	var held = arm["grabbed_body"]
+	if bool(arm["grabbed"]) and held != null and is_instance_valid(held):
+		palm = (held as Node3D).global_position
 	for s in range(PART_NAMES.size()):
 		var part := root.get_node(PART_NAMES[s]) as Node3D
-		_orient_between(part, pts[s], pts[s + 1])
+		var toward := palm if String(PART_NAMES[s]) == "Hand" else Vector3.INF
+		_orient_between(part, pts[s], pts[s + 1], toward)
 
 
 ## Place a part so its origin sits at `a` and its local +Z axis points
 ## toward `b` (meshes are modelled along +Z).
-func _orient_between(part: Node3D, a: Vector3, b: Vector3) -> void:
+##
+## `palm_toward` rolls the part so its local -Y faces that point. The
+## hand needs it: a quaternion that only aims +Z leaves the roll
+## arbitrary, so the PALM could face any direction — including away
+## from the thing being held, with the fingers curling into empty air.
+## Everything else has no front, so it does not care.
+func _orient_between(part: Node3D, a: Vector3, b: Vector3,
+		palm_toward := Vector3.INF) -> void:
 	var dir := b - a
 	var len := dir.length()
 	if len < 1e-5:
 		part.global_position = a
 		return
-	var basis := Basis(Quaternion(Vector3(0, 0, 1), dir / len))
+	var fwd := dir / len
+	var basis := Basis(Quaternion(Vector3(0, 0, 1), fwd))
+	if palm_toward.is_finite():
+		# Roll so -Y points at the target, keeping +Z along the arm.
+		var want := palm_toward - a
+		want = want - fwd * want.dot(fwd)       # flatten onto the palm plane
+		if want.length() > 1e-4:
+			var down := want.normalized()
+			var right := down.cross(fwd).normalized()
+			basis = Basis(right, -down, fwd)
 	part.global_transform = Transform3D(basis, a)
 
 

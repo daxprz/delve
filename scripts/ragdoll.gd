@@ -41,6 +41,33 @@ const JOINTS := [
 	{"a": "ThighR", "b": "ShinR", "at": "Pelvis/HipR/ThighR/ShinR", "swing": 0.5},
 ]
 
+## A FOUR-LEGGED body's parts (STO-ENEMIES-018). The humanoid table
+## above is a list of Pelvis/Torso/Shoulder paths that simply do not
+## exist on a crawler, so building from it produced ZERO parts and the
+## creature could not ragdoll at all.
+const QUAD_PARTS: Array = [
+	{"n": "Block", "p": ".", "f": 0.40},
+	{"n": "FLUpper", "p": "LegFL/Upper", "f": 0.075},
+	{"n": "FLLower", "p": "LegFL/Upper/Lower", "f": 0.075},
+	{"n": "FRUpper", "p": "LegFR/Upper", "f": 0.075},
+	{"n": "FRLower", "p": "LegFR/Upper/Lower", "f": 0.075},
+	{"n": "BLUpper", "p": "LegBL/Upper", "f": 0.075},
+	{"n": "BLLower", "p": "LegBL/Upper/Lower", "f": 0.075},
+	{"n": "BRUpper", "p": "LegBR/Upper", "f": 0.075},
+	{"n": "BRLower", "p": "LegBR/Upper/Lower", "f": 0.075},
+]
+
+const QUAD_JOINTS: Array = [
+	{"a": "Block", "b": "FLUpper", "at": "LegFL", "swing": 0.8},
+	{"a": "Block", "b": "FRUpper", "at": "LegFR", "swing": 0.8},
+	{"a": "Block", "b": "BLUpper", "at": "LegBL", "swing": 0.8},
+	{"a": "Block", "b": "BRUpper", "at": "LegBR", "swing": 0.8},
+	{"a": "FLUpper", "b": "FLLower", "at": "LegFL/Upper/Lower", "swing": 0.5},
+	{"a": "FRUpper", "b": "FRLower", "at": "LegFR/Upper/Lower", "swing": 0.5},
+	{"a": "BLUpper", "b": "BLLower", "at": "LegBL/Upper/Lower", "swing": 0.5},
+	{"a": "BRUpper", "b": "BRLower", "at": "LegBR/Upper/Lower", "swing": 0.5},
+]
+
 ## Ragdoll parts live on their OWN physics layer: they collide with
 ## the world but nothing queries them as ordinary bodies. The tail
 ## masks this layer out so a tumbling ragdoll can't drag the Verlet
@@ -67,7 +94,11 @@ func build_from_body(body: Node3D, mass_scale: float) -> int:
 	pmat.friction = 0.9
 	pmat.bounce = 0.05
 
-	for def in PARTS:
+	# Which skeleton this body has. A crawler answers leg_count().
+	var is_quad: bool = body.has_method("leg_count")
+	var part_list: Array = QUAD_PARTS if is_quad else PARTS
+	var joint_list: Array = QUAD_JOINTS if is_quad else JOINTS
+	for def in part_list:
 		var joint_node := body.get_node_or_null(def["p"]) as Node3D
 		if joint_node == null:
 			continue
@@ -107,7 +138,7 @@ func build_from_body(body: Node3D, mass_scale: float) -> int:
 		rb.add_child(mi)
 		_parts[def["n"]] = rb
 
-	for jd in JOINTS:
+	for jd in joint_list:
 		if not (_parts.has(jd["a"]) and _parts.has(jd["b"])):
 			continue
 		var anchor := body.get_node_or_null(jd["at"]) as Node3D

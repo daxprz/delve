@@ -13,6 +13,13 @@ const FALL_SAFE_SPEED := 12.0  # landing faster than this hurts (dropped from he
 const FALL_DAMAGE_SCALE := 4.0
 
 const BodyScript := preload("res://scripts/body.gd")
+const QuadrupedScript := preload("res://scripts/quadruped_body.gd")
+const EnemyKinds := preload("res://scripts/enemy_kinds.gd")
+
+## Which KIND of enemy this is (STO-ENEMIES-017), an index into
+## EnemyKinds.LIST. Replicated with the spawn, so every peer builds
+## the same creature rather than each machine guessing.
+@export var kind: int = 0
 
 # Knockdown reactions (STO-ENEMIES-004/006): strong hits knock the
 # enemy into a REAL physics ragdoll — RigidBody parts + joints built
@@ -68,6 +75,11 @@ var _stability := 1.0           # resistance to being knocked down
 
 var _stagger := 0.0
 var _health := MAX_HEALTH
+## Filled in from the kind (STO-ENEMIES-017).
+var _kind_id := "walker"
+var _max_health := MAX_HEALTH
+var _kind_speed := SPEED
+var _kind_damage := ATTACK_DAMAGE
 var _carried := false
 # Limbs (EPI-ENEMIES-ENEMY-LIMBS). A limb is a friendly name for the
 # ragdoll part it hangs off; taking the part off takes everything
@@ -107,6 +119,12 @@ var _base_color := Color(0.8, 0.2, 0.2)
 
 func _ready() -> void:
 	add_to_group("enemies")
+	var def := EnemyKinds.get_def(kind)
+	_kind_id = String(def["id"])
+	_max_health = float(def["health"])
+	_health = _max_health
+	_kind_speed = float(def["speed"])
+	_kind_damage = float(def["damage"])
 
 	_collider = CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
@@ -129,17 +147,34 @@ func _ready() -> void:
 			0.7 + rng.randf_range(0.0, 0.25),
 			0.12 + rng.randf_range(0.0, 0.15),
 			0.12 + rng.randf_range(0.0, 0.15))
-	_body = BodyScript.new()
-	_body.name = "Body"
-	_body.set("build_human_arms", true)
-	_body.set("use_fade", false)          # solid up close — not first-person
-	_body.set("base_color", _base_color)
-	_body.set("variation_seed", vseed)
-	add_child(_body)
+	if String(EnemyKinds.get_def(kind)["body"]) == "quadruped":
+		# Four legs and a block (STO-ENEMIES-018).
+		_body = QuadrupedScript.new()
+		_body.name = "Body"
+		_body.set("base_color", Color(EnemyKinds.get_def(kind)["colour"]))
+		_body.set("variation_seed", vseed)
+		add_child(_body)
+	else:
+		_body = BodyScript.new()
+		_body.name = "Body"
+		_body.set("build_human_arms", true)
+		_body.set("use_fade", false)      # solid up close — not first-person
+		_body.set("base_color", _base_color)
+		_body.set("variation_seed", vseed)
+		add_child(_body)
 
 	# Physical character from the generated build (STO-ENEMIES-005):
 	# wide/bulky -> heavy and stable; tall (long legs, high center of
 	# mass) -> topples easier. Clamped so gameplay thresholds stay sane.
+	if _kind_id != "walker":
+		# The humanoid's build numbers do not exist on other bodies;
+		# give a quadruped sane physical character and stop.
+		var qs: Vector3 = _body.call("body_size")
+		_mass = clampf(qs.x * qs.z * 5.0, 0.6, 1.3)
+		_com_h = 0.55
+		_stability = 1.15          # four legs are hard to topple
+		_getup_time = GETUP_TIME * (0.75 + 0.5 * _mass)
+		return
 	var bk: float = _body.get("_bulk")
 	var lg: float = _body.get("_leg_scale")
 	var to: float = _body.get("_torso_scale")
@@ -270,6 +305,12 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
+	# Tell a four-legged body how fast it is actually travelling, so
+	# its legs step in time with the ground instead of running on the
+	# spot (STO-ENEMIES-018).
+	if _body != null and _body.has_method("set_speed"):
+		_body.call("set_speed", Vector2(velocity.x, velocity.z).length())
+
 	# Close enough to swing? Start the wind-up (STO-ENEMIES-011).
 	if _attack_cd <= 0.0 and _windup <= 0.0 and not _carried:
 		var prey := _nearest_player()
@@ -341,8 +382,8 @@ func _land_blow() -> void:
 ## STO-ENEMIES-015 reduces it as arms are torn off.
 func attack_damage() -> float:
 	match arms_left():
-		2: return ATTACK_DAMAGE
-		1: return ATTACK_DAMAGE * ONE_ARM_DAMAGE
+		2: return _kind_damage
+		1: return _kind_damage * ONE_ARM_DAMAGE
 		_: return 0.0   # no arms: it still chases, but it is harmless
 
 
@@ -362,6 +403,11 @@ func tear_off_limb(limb: String) -> bool:
 	Sounds.make(global_position, Sounds.RAGDOLL_LANDING)
 	_on_limb_lost(limb)
 	return true
+
+
+## Which kind of creature this is.
+func kind_id() -> String:
+	return _kind_id
 
 
 ## Which limbs are gone.
@@ -404,8 +450,8 @@ func _on_limb_lost(limb: String) -> void:
 ## limp after you; take both and it is already dead.
 func _move_speed() -> float:
 	match legs_left():
-		2: return SPEED
-		1: return SPEED * ONE_LEG_SPEED
+		2: return _kind_speed
+		1: return _kind_speed * ONE_LEG_SPEED
 		_: return 0.0
 
 
@@ -591,8 +637,10 @@ func _knockdown(dv: Vector3, swept: bool) -> void:
 		return
 	# Momentum in: parts inherit our velocity + the hit dv. Sweeps
 	# strike the shins (legs fly out); blows strike torso and head.
-	rag.call("launch", velocity, dv,
-			["ShinL", "ShinR"] if swept else ["Torso", "Head"])
+	var hit_parts: Array = ["ShinL", "ShinR"] if swept else ["Torso", "Head"]
+	if _kind_id != "walker":
+		hit_parts = ["FLLower", "BRLower"] if swept else ["Block"]
+	rag.call("launch", velocity, dv, hit_parts)
 	DebugOverlay.draw_line3("enemy/hits", self,
 			global_position + Vector3.UP * 1.2,
 			global_position + Vector3.UP * 1.2 + dv * 0.25, Color.RED, 0.7)
@@ -732,4 +780,4 @@ func health() -> float:
 
 
 func max_health() -> float:
-	return MAX_HEALTH
+	return _max_health

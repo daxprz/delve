@@ -35,9 +35,9 @@ until its fingertip meets the object's surface, and stops there.
 
 - [x] Each finger has its **own** curl, not one shared value.
 - [x] A finger stops when its tip reaches the object's surface.
-- [~] Fingers at different distances curl by different amounts — TRUE
-      while moving and turning, but NOT yet distinguishing a big
-      object from a small one. **This story is not finished.**
+- [x] Fingers at different distances curl by different amounts, and a
+      big object now leaves them **less** curled than a small one
+      (0.21 against 0.65).
 - [x] Recomputed every tick: moving re-fits 3 of 5 fingers, turning
       re-fits 4 of 5.
 - [x] Moving the object within the grip changes the curls.
@@ -46,18 +46,29 @@ until its fingertip meets the object's surface, and stops there.
 - [ ] Proven by a headless test that moves things and checks the
       curls actually change.
 
-## Where this got to (2026-08-13) — NOT finished
+## How the last check was finally fixed (2026-08-14)
 
 Working: each finger finds the surface for itself, and the grip
 re-fits every tick as things move (3 of 5 fingers change when the
 object shifts, 4 of 5 when the player turns).
 
-**Still failing:** `smoke_finger_grip` reports *"a BIGGER object
-leaves the fingers LESS curled (1.00 big vs 1.00 small)"* — both close
-fully, so a crate and a small block feel the same. The per-finger
-sweep works, but for those two the fingertips pass the object without
-registering it. Left failing on purpose rather than loosening the
-check, because that check IS the story.
+The check left failing overnight — *"a BIGGER object leaves the
+fingers LESS curled (1.00 big vs 1.00 small)"* — turned out to have a
+simple cause, found by printing positions rather than reasoning:
+
+```
+box in hand space:      y +0.094
+finger sweep:           y -0.12 down to -0.33
+```
+
+**The fingers passed underneath the object.** It was being held on the
+hand's centre line while the fingers curl toward the palm side, so
+they closed on air every time and always reached full curl. Holding it
+at `GRIP_PALM_Y` (-0.20, the palm side) fixed it: big 0.21 against
+small 0.65.
+
+Worth keeping: both times this story looked mysterious, the answer was
+three printed coordinates. Neither was findable by reading the code.
 
 ### What the arm length was hiding
 
