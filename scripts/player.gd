@@ -162,6 +162,11 @@ const PISTON_MIN_LAUNCH := 6.0      # a tap still does something
 const PISTON_MAX_LAUNCH := 34.0     # a full charge is dramatic
 const PISTON_RANGE := 4.5
 const PISTON_LIFT := 0.35           # how much of the launch goes upward
+## Cooldown after a shot, so it cannot be spammed (STO-CHARACTER-068).
+const PISTON_COOLDOWN := 1.1
+const PistonScript := preload("res://scripts/piston.gd")
+var _piston_cd := 0.0
+var _piston_shaft: Node3D
 var _piston_mode := false
 var _piston_charge := 0.0
 var _piston_fired := 0
@@ -594,37 +599,43 @@ func _update_piston(delta: float) -> void:
 		fire_piston()
 
 
-## Fire whatever is charged. Returns the launch speed used.
+## Fire the shaft. Returns the speed it was launched at.
+##
+## It SHOOTS OUT as a real object now (STO-CHARACTER-068) rather than
+## hitting instantly in a radius — the charge sets how fast the shaft
+## flies, and it connects with whatever it meets on the way.
 func fire_piston() -> float:
 	var t := clampf(_piston_charge / PISTON_MAX_CHARGE, 0.0, 1.0)
 	_piston_charge = 0.0
-	if not _piston_mode:
+	if not _piston_mode or _piston_cd > 0.0:
 		return 0.0
-	var power := lerpf(PISTON_MIN_LAUNCH, PISTON_MAX_LAUNCH, t)
+	if is_instance_valid(_piston_shaft):
+		return 0.0                 # one shaft at a time
+	_piston_cd = PISTON_COOLDOWN
 	_piston_fired += 1
-	var dir := _aim_forward() + Vector3.UP * PISTON_LIFT
-	dir = dir.normalized()
 
-	# A PLAYER is launched and keeps control — no ragdoll, no stagger,
-	# no damage. This is a boost between friends, not an attack.
-	for other in get_tree().get_nodes_in_group("players"):
-		var pl := other as CharacterBody3D
-		if pl == null or pl == self:
-			continue
-		if global_position.distance_to(pl.global_position) > PISTON_RANGE:
-			continue
-		if pl.has_method("launch_by_piston"):
-			pl.call("launch_by_piston", dir * power)
-		DebugOverlay.log("player/abilities", self,
-				"%s: piston LAUNCHED %s at %.1f", [name, pl.name, power])
+	# Fires wherever you AIM — straight up, straight down, behind you.
+	var dir := _aim_forward().normalized()
+	var shaft: Node3D = PistonScript.new()
+	shaft.name = "Piston"
+	get_parent().add_child(shaft)
+	shaft.global_position = global_position + Vector3.UP * 1.1 + dir * 0.4
+	shaft.global_transform = Transform3D(
+			Basis(Quaternion(Vector3(0, 0, 1), dir)), shaft.global_position)
+	shaft.call("setup", self, dir, t)
+	_piston_shaft = shaft
+	DebugOverlay.log("player/abilities", self,
+			"%s: piston FIRED (charge %.2f)", [name, t])
+	return lerpf(PISTON_MIN_LAUNCH, PISTON_MAX_LAUNCH, t)
 
-	# An ENEMY is launched AND ragdolled.
-	var enemy := _nearest_enemy(PISTON_RANGE)
-	if enemy != null and enemy.has_method("apply_knockback"):
-		enemy.call("apply_knockback", dir * power * 3.0)
-		DebugOverlay.log("player/abilities", self,
-				"%s: piston blasted %s at %.1f", [name, enemy.name, power])
-	return power
+
+## The live shaft, or null.
+func piston_shaft() -> Node3D:
+	return _piston_shaft if is_instance_valid(_piston_shaft) else null
+
+
+func piston_cooldown() -> float:
+	return _piston_cd
 
 
 ## Launched by a friend's piston (STO-CHARACTER-067). Full control is
@@ -1199,6 +1210,8 @@ func _update_heal(delta: float) -> void:
 func _update_abilities() -> void:
 	if _scratch_cd > 0.0:
 		_scratch_cd -= get_physics_process_delta_time()
+	if _piston_cd > 0.0:
+		_piston_cd -= get_physics_process_delta_time()
 	if _dash_cd > 0.0:
 		_dash_cd -= get_physics_process_delta_time()
 	# C and G are DEAD KEYS (STO-CHARACTER-056).

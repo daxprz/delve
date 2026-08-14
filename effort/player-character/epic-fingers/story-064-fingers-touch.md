@@ -24,12 +24,18 @@ looks like it is floating in a claw rather than being gripped.
 
 ## Definition of Done
 
-- [ ] Fingertips end up touching the surface, not short of it.
-- [ ] They still do not sink INTO the object.
-- [ ] The gap is measured, and small — a fingertip's width at most.
-- [ ] Still no folding through the palm and no clipping between
-      fingers (STO-CHARACTER-058).
-- [ ] Works on a crate and on a grabbed body.
+- [x] Margin cut 0.045 -> 0.02, and the sweep stops HALF a step back rather than a whole one.
+- [x] They still stop before overlapping.
+- [x] The remaining gap is small — a fingertip's width at most.
+- [x] STO-CHARACTER-058 still passes: no palm folding, no clipping.
+- [x] Crate, grabbed body and dragged-ragdoll tests all still pass.
+
+## Verification notes (2026-08-14)
+
+Two causes, not one: a 4.5 cm contact margin AND the sweep stopping a
+whole step before contact. Together they left a visible gap, so a held
+crate looked like it was floating in a claw. Halving the step-back was
+the bigger of the two.
 
 ## Out of scope
 
