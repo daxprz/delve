@@ -71,9 +71,10 @@ climbing) · the Runner's dash and momentum claws · the Grabber's
 piston (mode, folding arms, shield plate, heavy turn, grabbing) ·
 procedural fingers that wrap and grip · the spider ragdoll crash fix.
 
-**Not released yet** — v0.1.11 is still the newest build. Cutting one
-needs the version bumped in `project.godot`; CI fails the build if it
-disagrees with the tag, so it cannot ship wrong.
+**Not released.** v0.1.11 is still the newest download. The version in
+`project.godot` is already bumped to **0.1.12**, so cutting one is just
+tagging `v0.1.12` — but do it with the game CLOSED, or ~22 tests skip
+and go out unverified. That is how two broken tests shipped in v0.1.9.
 
 ---
 
