@@ -1,5 +1,5 @@
 ---
-xid: STO-ENEMIES-024
+xid: STO-ENEMIES-028
 parent: ./epic.md
 kind: story
 effort: enemies
@@ -7,6 +7,7 @@ size: S
 status: draft
 date: 2026-08-14
 depends-on: [STO-ENEMIES-023]
+bd-id: delve-z25v
 ---
 
 # Seen from above, the spider is an X

@@ -106,12 +106,26 @@ var _lost: Array = []           # limb keys already torn off
 ## instead of vanishing. Capped, because each body is 11 rigid parts.
 const MAX_CORPSES := 8
 var _dead := false
-# Wall climbing (STO-ENEMIES-024) — the spider's trick, not the
-# Walker's. Four splayed legs gripping a surface is what a spider is
-# for, and nothing else in delve leaves the floor except the Flyer.
+# Clambering (STO-ENEMIES-027) — the spider's trick, not the Walker's.
+# Four splayed legs getting over an obstacle is what a spider is for,
+# and nothing else in delve leaves the floor except the Flyer.
+#
+# It gets over THINGS but not WALLS, and it decides which is which by
+# asking one question of the world: can I see the top of this from
+# here? A crate, yes. A ten-metre wall, no. That single measurement is
+# the whole rule, so an obstacle nobody anticipated still gets the
+# right answer. This REPLACES the climb-anything behaviour of
+# STO-ENEMIES-024, which made the big wall pointless.
 const CLIMB_SPEED := 2.2       # how fast it goes up
-const CLIMB_REACH := 1.1       # how close a wall has to be to grip
+const CLIMB_REACH := 1.1       # how close an obstacle has to be to grip
+## Fallback reach for a climber with no procedural body to measure.
+const CLAMBER_FALLBACK := 2.4
+## Head-on-ness below which sliding cannot help and we must pick a side
+## deliberately. A tangent this short means we are square to the wall.
+const WALL_TANGENT_MIN := 0.25
 var _climbing := false
+## True while a too-tall obstacle is turning us aside (for tests).
+var _skirting := false
 
 var _windup := 0.0              # >0 while rearing back to strike
 var _attack_cd := 0.0           # rest timer between swings
@@ -227,10 +241,24 @@ func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return  # server drives the enemies
 
-	# Climbing holds it against the wall, so gravity is off while it
-	# grips (STO-ENEMIES-024).
-	_climbing = _can_climb and not _dead and _ragdoll == null \
-			and _wall_ahead() != Vector3.ZERO
+	# What is in front of us, and is it a thing or a wall? Probed along
+	# the way we WANT to go, not the way we are drifting, so a spider
+	# shoved sideways still judges the obstacle it is walking into
+	# (STO-ENEMIES-027).
+	var hunted := _nearest_player()
+	var want := Vector3.ZERO
+	if hunted != null:
+		want = hunted.global_position - global_position
+		want.y = 0.0
+	else:
+		want = Vector3(velocity.x, 0.0, velocity.z)
+	var blocking: Dictionary = {}
+	if _can_climb and not _dead and _ragdoll == null:
+		blocking = _probe_ahead(want)
+	# Gripping an obstacle holds it up, so gravity is off while it
+	# clambers. A wall it cannot get over grants no such grip.
+	_climbing = bool(blocking.get("over", false))
+	_skirting = not blocking.is_empty() and not _climbing
 	if not is_on_floor() and not _climbing:
 		velocity += get_gravity() * delta
 
@@ -316,13 +344,21 @@ func _physics_process(delta: float) -> void:
 			to.y = 0.0
 			if to.length() > 0.6:  # stop when basically on top of them
 				var dir := to.normalized()
+				# Too big to climb? Follow the face of it instead of
+				# grinding into it, so it hunts its way around rather
+				# than standing there pressed against the stone.
+				if _skirting:
+					dir = _around(dir, blocking.get("normal", Vector3.ZERO))
 				var spd := _move_speed()
 				velocity.x = dir.x * spd
 				velocity.z = dir.z * spd
-				# Against a wall with the player higher up? Go UP it.
+				# Something climbable in the way? Go UP it. Not
+				# conditioned on where the player is: the obstacle is
+				# the reason to climb, and the probe stops seeing it
+				# once we are over the top, which ends the climb by
+				# itself.
 				if _climbing:
-					var up_needed: float = target.global_position.y - global_position.y
-					velocity.y = CLIMB_SPEED if up_needed > 0.3 else 0.0
+					velocity.y = CLIMB_SPEED
 				look_at(global_position + dir, Vector3.UP)
 			else:
 				velocity.x = 0.0
@@ -508,28 +544,102 @@ func is_winding_up() -> bool:
 	return _windup > 0.0
 
 
-## The normal of a wall within reach, or ZERO if there is none.
+## How high this creature can get a leg — its own body height.
 ##
-## Cast in the direction we are already heading, at body height. Only
-## STATIC geometry counts as climbable — you cannot climb another
-## creature.
-func _wall_ahead() -> Vector3:
-	var dir := Vector3(velocity.x, 0.0, velocity.z)
+## Deliberately measured from the creature rather than typed in as a
+## number: make the spider taller and its reach follows, with nothing
+## to re-tune (STO-ENEMIES-027).
+func _clamber_reach() -> float:
+	if _body != null and _body.has_method("body_height"):
+		return maxf(float(_body.call("body_height")), 0.5)
+	return CLAMBER_FALLBACK
+
+
+## What is in the way, and can we get over it?
+##
+## Returns {} for clear ground, else {"normal": Vector3,
+## "over": bool} — `over` true for a thing we can clamber, false for a
+## wall we must go around.
+##
+## Only STATIC geometry counts; you cannot climb another creature.
+func _probe_ahead(dir: Vector3) -> Dictionary:
 	if dir.length() < 0.1:
 		dir = -global_transform.basis.z
 	dir = dir.normalized()
-	var from_p := global_position + Vector3.UP * 0.6
-	var q := PhysicsRayQueryParameters3D.create(from_p, from_p + dir * CLIMB_REACH)
-	q.exclude = [get_rid()]
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	if hit.is_empty() or not (hit.get("collider") is StaticBody3D):
-		return Vector3.ZERO
-	return hit.get("normal", Vector3.ZERO)
+	var space := get_world_3d().direct_space_state
+	# Look LOW first. A single waist-high ray is a humanoid's idea of
+	# "in the way" — on a spider three metres tall it sails clean over
+	# every crate in the game, and the creature reports open ground
+	# while walking into a box. Shin height finds the small things; the
+	# higher ray is the backstop for anything the low one skims under.
+	var hit: Dictionary = {}
+	var from_p := global_position
+	for h in [0.35, 0.9]:
+		from_p = global_position + Vector3.UP * float(h)
+		var q := PhysicsRayQueryParameters3D.create(from_p,
+				from_p + dir * CLIMB_REACH)
+		q.exclude = [get_rid()]
+		var got := space.intersect_ray(q)
+		if not got.is_empty() and got.get("collider") is StaticBody3D:
+			hit = got
+			break
+	if hit.is_empty():
+		return {}
+
+	var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+	var reach := _clamber_reach()
+
+	# Can we see its top? Drop a ray from just above our reach, a
+	# little way INSIDE the obstacle's face. If the obstacle is short
+	# the ray lands on top of it. If it towers over us the ray starts
+	# buried inside solid rock and reports nothing — and that "nothing"
+	# is exactly the answer we want, because a surface we cannot see
+	# the top of is a wall.
+	var probe: Vector3 = hit.get("position", from_p) + dir * 0.15
+	probe.y = global_position.y + reach + 0.2
+	var down := PhysicsRayQueryParameters3D.create(probe,
+			probe + Vector3.DOWN * (reach + 0.9))
+	down.exclude = [get_rid()]
+	var top := space.intersect_ray(down)
+	var can_get_over: bool = not top.is_empty() \
+			and float(top["position"].y) <= global_position.y + reach
+
+	DebugOverlay.log("enemy/ai", self, "%s: obstacle top=%s reach=%.2f -> %s",
+			[name,
+			"none" if top.is_empty() else "%.2f" % float(top["position"].y),
+			reach, "clamber" if can_get_over else "go around"])
+	return {"normal": normal, "over": can_get_over}
 
 
-## Is this creature able to climb at all?
+## Steer along the face of something too big to climb.
+##
+## The tangent — the way we wanted to go, with the part that pushes
+## into the stone taken out. Square-on to a wall that tangent vanishes,
+## and there is no answer in the geometry as to which way to turn; so
+## pick a side from the creature's own name. Hashed rather than random
+## so it is the same on every peer and the same every frame — a spider
+## that re-rolled its choice would dither in place forever.
+func _around(want: Vector3, normal: Vector3) -> Vector3:
+	var n := Vector3(normal.x, 0.0, normal.z)
+	if n.length() < 0.01:
+		return want
+	n = n.normalized()
+	var tangent: Vector3 = want - n * want.dot(n)
+	if tangent.length() < WALL_TANGENT_MIN:
+		var side := 1.0 if (hash(name) % 2) == 0 else -1.0
+		tangent = n.cross(Vector3.UP) * side
+	# Lean a little off the wall so we skirt it instead of grinding.
+	return (tangent.normalized() + n * 0.15).normalized()
+
+
+## Is this creature getting over something right now?
 func is_climbing() -> bool:
 	return _climbing
+
+
+## Is this creature being turned aside by something too big?
+func is_skirting() -> bool:
+	return _skirting
 
 
 func _nearest_player() -> Node3D:

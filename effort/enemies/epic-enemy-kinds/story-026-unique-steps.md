@@ -8,6 +8,7 @@ status: shipped
 date: 2026-08-14
 shipped: 2026-08-14
 depends-on: [STO-ENEMIES-023]
+bd-id: delve-68f7
 ---
 
 # Every step the spider takes is different

@@ -12,6 +12,14 @@ bd-id: delve-gq7
 
 # The spider climbs walls
 
+> **Superseded on 2026-08-14 by
+> [STO-ENEMIES-027](./story-027-clamber-not-walls.md).** The operator
+> decided the spider should get over *things* but be stopped by *walls*
+> — climbing anything made the big wall pointless. The stall recorded
+> below is therefore **moot**: the wall it stalled on is exactly what it
+> is no longer meant to climb. Left here unedited, because what was
+> tried and what it actually did is worth keeping.
+
 ## Summary
 
 The spider can go **up walls**. Corner it and it does not stop — it

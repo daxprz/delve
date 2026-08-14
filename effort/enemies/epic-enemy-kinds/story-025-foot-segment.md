@@ -7,6 +7,7 @@ size: S
 status: abandoned
 date: 2026-08-14
 depends-on: [STO-ENEMIES-023]
+bd-id: delve-gx2h
 ---
 
 # A fourth segment: a foot at the bottom of the leg

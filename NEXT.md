@@ -38,9 +38,11 @@ Restart Play first — a running game keeps the old code.
 
 ## 🧩 Unfinished, with the reason written down
 
-- **STO-ENEMIES-024 — wall climbing.** The spider detects a wall and
-  climbs y 1.0 -> 3.3, then **stalls** partway up. Only the spider
-  climbs, and that IS asserted.
+- ~~**STO-ENEMIES-024 — wall climbing.**~~ **Settled by
+  STO-ENEMIES-027:** the spider now gets over *things* (crates, low
+  ledges) and is **stopped by walls**, which is what you asked for. The
+  old stall no longer matters — it stalled on a wall it is not supposed
+  to climb. Blocked, it now goes **around**.
 - **The piston in multiplayer is unverified.** Much less risky now
   that nothing is spawned — the arms already exist on every machine,
   so only the launch crosses the network.
@@ -61,6 +63,22 @@ bitten twice:
 
 Both times the symptom was identical: a test quietly asserting a
 decision you had already reversed, hidden for days.
+
+**Partly defused (2026-08-14).** There is now a real runner,
+`scripts/run_suite.sh`, instead of me retyping the loop each time. It
+warns up front when the port is held, prints skipped tests by name, and
+ends with "skipped tests are NOT verified". Two things it taught me
+immediately:
+
+- The port is **UDP**. `ss -ltn` shows 7777 as free while the game is
+  plainly holding it, so my old check was looking at the wrong thing
+  and I twice believed the port was free when it was not.
+- The `_client` half of a paired test can never pass alone — it dials a
+  host that is not there. The runner now drives the pair through
+  `run_mp_test.sh` instead of scoring the client half as a failure.
+
+The underlying problem stands: the tests still want port 7777. The real
+fix is to let them use a different one.
 
 ---
 

@@ -311,12 +311,12 @@ func _physics_process(_d: float) -> bool:
 			if _ticks < 150:
 				return false
 			var gained := _crawler.global_position.y - _climb_from
-			# NOT asserted yet (STO-ENEMIES-024 is unfinished). Climbing
-			# demonstrably works in isolation — a spider placed at a
-			# wall goes from y 1.0 to 3.3 — but it stalls partway up,
-			# and this phase inherits a crawler that has already been
-			# staggered, so a failure here would not mean what it says.
-			# Reported, not asserted, until the stall is understood.
+			# Reported, not asserted. This 12 m wall is now deliberately
+			# UNclimbable (STO-ENEMIES-027 — things yes, walls no), so a
+			# gain of ~0 here is the correct answer, not a regression.
+			# The real coverage lives in smoke_clamber.gd, which checks
+			# both halves on a FRESH spider; this phase inherits one an
+			# earlier phase already staggered.
 			print("[CLIMB] gained %.2f m, climbing=%s"
 					% [gained, str(_crawler.call("is_climbing"))])
 			# Walkers do NOT climb — this is the spider's trick.
