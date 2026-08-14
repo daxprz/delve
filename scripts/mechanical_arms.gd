@@ -215,9 +215,77 @@ func _ready() -> void:
 
 	_make_arm(0, -1, MOUSE_BUTTON_LEFT, "ArmLeft")    # left arm, LMB
 	_make_arm(1, 1, MOUSE_BUTTON_RIGHT, "ArmRight")   # right arm, RMB
+	_make_plate()
 
 	print("[ARMS] built 2 procedural ragdoll arms, 3 parts each "
 			+ "(upper arm + forearm + fist), scale %.2f" % arm_scale)
+
+
+## The piston\'s face: a big flat block, like a small shield — wider
+## than it is thick, and clearly not two fists (STO-CHARACTER-073).
+## Hidden until the arms fold into piston mode.
+func _make_plate() -> void:
+	# A solid body, not decoration (STO-CHARACTER-073): the plate is a
+	# real obstacle in the world, so it shoves what it meets by being
+	# there rather than by a check.
+	_plate = AnimatableBody3D.new()
+	_plate.name = "PistonPlate"
+	_plate.top_level = true          # placed in world space, like the arms
+	_plate.visible = false
+	add_child(_plate)
+
+	var col := CollisionShape3D.new()
+	var cb := BoxShape3D.new()
+	cb.size = Vector3(PLATE_W, PLATE_H, PLATE_T) * arm_scale
+	col.shape = cb
+	_plate.add_child(col)
+
+	var dark := _make_material(Color(0.26, 0.28, 0.33), 1.0, 0.45)
+
+	# The face itself.
+	var face := MeshInstance3D.new()
+	face.name = "Face"
+	var fb := BoxMesh.new()
+	fb.size = Vector3(PLATE_W, PLATE_H, PLATE_T) * arm_scale
+	face.mesh = fb
+	face.material_override = _metal
+	_plate.add_child(face)
+
+	# Mechanical clutter so it reads as built rather than as a slab:
+	# a rim, a central boss, and four bolts.
+	var rim := MeshInstance3D.new()
+	var rb := BoxMesh.new()
+	rb.size = Vector3(PLATE_W * 1.08, PLATE_H * 1.08, PLATE_T * 0.45) * arm_scale
+	rim.mesh = rb
+	rim.material_override = dark
+	rim.position = Vector3(0.0, 0.0, -PLATE_T * 0.4 * arm_scale)
+	_plate.add_child(rim)
+
+	var boss := MeshInstance3D.new()
+	var bc := CylinderMesh.new()
+	bc.top_radius = PLATE_H * 0.22 * arm_scale
+	bc.bottom_radius = PLATE_H * 0.28 * arm_scale
+	bc.height = PLATE_T * 1.5 * arm_scale
+	boss.mesh = bc
+	boss.material_override = _joint_mat
+	boss.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+	boss.position = Vector3(0.0, 0.0, PLATE_T * 0.5 * arm_scale)
+	_plate.add_child(boss)
+
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			var bolt := MeshInstance3D.new()
+			var bm := CylinderMesh.new()
+			bm.top_radius = 0.045 * arm_scale
+			bm.bottom_radius = 0.045 * arm_scale
+			bm.height = PLATE_T * 1.2 * arm_scale
+			bolt.mesh = bm
+			bolt.material_override = _joint_mat
+			bolt.rotation = Vector3(PI * 0.5, 0.0, 0.0)
+			bolt.position = Vector3(sx * PLATE_W * 0.36 * arm_scale,
+					sy * PLATE_H * 0.34 * arm_scale,
+					PLATE_T * 0.4 * arm_scale)
+			_plate.add_child(bolt)
 
 
 func _make_material(color: Color, metallic: float, rough: float) -> StandardMaterial3D:
@@ -458,6 +526,14 @@ func _physics_process(delta: float) -> void:
 	# rather than a snap (STO-CHARACTER-073).
 	var want: float = 1.0 if _mode == MODE_PISTON else 0.0
 	_piston_blend = move_toward(_piston_blend, want, PISTON_BLEND_RATE * delta)
+	_update_plate()
+	# The fingers go away in piston mode (STO-CHARACTER-073): the
+	# hands are one machine now, not two hands with digits.
+	var show_fingers: bool = _piston_blend < 0.5
+	for i in range(_arms.size()):
+		var f := fingers_root(i)
+		if f != null and f.visible != show_fingers:
+			f.visible = show_fingers
 	if _mode == MODE_PISTON:
 		_update_piston_stroke(delta)
 	for arm_v in _arms:
@@ -508,6 +584,10 @@ func _simulate_arm(arm: Dictionary, delta: float) -> void:
 		# blend outlasts the mode, so leaving it eases apart too.
 		var joined := _piston_point()
 		pts[last] += (joined - pts[last]) * PISTON_JOIN_LERP * _piston_blend
+		# Gravity must not sag the arms back down between strokes: in
+		# piston mode they are HELD out, machinery under power rather
+		# than limbs hanging.
+		prev[last] = pts[last]
 		# Pull the elbow inward too, or the arms meet at the hands
 		# while their middles still bow out to the sides.
 		var elbow := _shoulder_world(int(arm["side"])).lerp(joined, 0.5)
@@ -932,6 +1012,11 @@ func _attach(arm: Dictionary, col) -> void:
 	arm["grabbed_enemy"] = null
 	if col == null:
 		return
+	if _mode == MODE_PISTON:
+		# Nothing can be grabbed in piston mode (STO-CHARACTER-073).
+		# The mouse buttons charge the piston there, and latching onto
+		# a crate at the same time made no sense at all.
+		return
 	if col.has_method("ragdoll_now"):
 		var rag: Node3D = col.call("ragdoll_now")
 		if rag != null:
@@ -1061,7 +1146,9 @@ func _update_fist_look() -> void:
 ## (STO-CHARACTER-073).
 const PISTON_JOIN_LERP := 0.30
 const PISTON_BLEND_RATE := 2.2
-const PISTON_JOIN_DIST := 1.05
+## Held OUT, not resting (STO-CHARACTER-073): far enough forward that
+## the arms are extended whenever the mode is on, not only mid-stroke.
+const PISTON_JOIN_DIST := 1.45
 ## Firing (STO-CHARACTER-072): the ARMS are the piston. They drive
 ## outward from the chest and their joined hands are the head — there
 ## is no separate object, so the reach is honestly limited by how long
@@ -1078,6 +1165,12 @@ var _piston_out := false
 var _piston_hit: Dictionary = {}
 ## 0 = arms apart and normal, 1 = fully locked into the piston.
 var _piston_blend := 0.0
+## The flat plate carried on the front of the joined hands
+## (STO-CHARACTER-073): a small shield, not a fist.
+const PLATE_W := 0.72
+const PLATE_H := 0.60
+const PLATE_T := 0.11
+var _plate: Node3D
 const MODE_GRAB := 0
 const MODE_PUNCH := 1
 const MODE_PISTON := 2
@@ -1175,6 +1268,33 @@ func _update_piston_stroke(delta: float) -> void:
 					node.call("launch_by_piston", push)
 			elif node.has_method("apply_knockback"):
 				node.call("apply_knockback", push * 3.0)
+
+
+## Carry the plate on the joined hands, facing the way you aim.
+func _update_plate() -> void:
+	if _plate == null:
+		return
+	_plate.visible = _piston_blend > 0.05
+	# Only solid while you can see it — an invisible plate parked in
+	# front of the player would be a wall nobody could explain.
+	_plate.set_collision_layer(1 if _plate.visible else 0)
+	_plate.set_collision_mask(1 if _plate.visible else 0)
+	if not _plate.visible:
+		return
+	var at := _piston_point()
+	var fwd := aim_dir().normalized()
+	var up := Vector3.UP
+	if absf(fwd.dot(up)) > 0.98:
+		up = Vector3.FORWARD               # looking straight up or down
+	var right := up.cross(fwd).normalized()
+	var real_up := fwd.cross(right).normalized()
+	_plate.global_transform = Transform3D(Basis(right, real_up, fwd), at)
+	# Grows in with the fold, so it does not pop into existence.
+	_plate.scale = Vector3.ONE * maxf(_piston_blend, 0.05)
+
+
+func plate_visible() -> bool:
+	return _plate != null and _plate.visible
 
 
 func arm_mode() -> int:
@@ -1307,6 +1427,11 @@ func grabbed_body(i: int) -> Node:
 
 
 func grab_body(i: int, body: Node, point: Vector3) -> void:
+	if _mode == MODE_PISTON:
+		# Blocked HERE as well as in _attach: this is a direct entry
+		# point used by abilities and tests, so guarding only the aim
+		# path left a way in (STO-CHARACTER-073).
+		return
 	_arms[i]["grabbed"] = true
 	_arms[i]["grabbed_body"] = body
 	_arms[i]["target"] = point

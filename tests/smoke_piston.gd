@@ -65,6 +65,34 @@ func _physics_process(_d: float) -> bool:
 				return false
 			var apart := float(_piston_arms.call("hand_point", 0)
 					.distance_to(_piston_arms.call("hand_point", 1)))
+			# A flat plate on the front, and ARMS HELD OUT — machinery
+			# under power, not limbs hanging (STO-CHARACTER-073).
+			_check(bool(_piston_arms.call("plate_visible")),
+					"the piston carries a flat plate on its front")
+			var sh: Vector3 = _piston_arms.call("shoulder_point", 0)
+			var hd: Vector3 = _piston_arms.call("hand_point", 0)
+			_check(sh.distance_to(hd) > 1.0,
+					"the arms are held OUT (%.2f m from the shoulder)"
+					% sh.distance_to(hd))
+			_check(absf(hd.y - sh.y) < 0.35,
+					"and level, not sagging under gravity (%+.2f m)"
+					% (hd.y - sh.y))
+			# No fingers, no grabbing, and the plate is solid
+			# (STO-CHARACTER-073).
+			var fr: Node3D = _piston_arms.call("fingers_root", 0)
+			_check(fr != null and not fr.visible,
+					"the fingers are gone — the hands are one machine")
+			var plate: Node = _piston_arms.get_node_or_null("PistonPlate")
+			_check(plate is AnimatableBody3D
+							and (plate as AnimatableBody3D).collision_layer != 0,
+					"the plate is a SOLID body, not decoration")
+			var box := _main.get_node_or_null("Playground/MovableBox")
+			if box != null:
+				box.global_position = _grabber.global_position \
+						+ Vector3(0.0, 0.5, -1.5)
+				_piston_arms.call("grab_body", 0, box, box.global_position)
+				_check(not bool(_piston_arms.call("is_grabbed", 0)),
+						"nothing can be grabbed in piston mode")
 			_check(apart < 0.15,
 					"in piston mode the hands COMBINE into one (%.3f m, was %.3f)"
 					% [apart, _apart_grab])
