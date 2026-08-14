@@ -39,6 +39,12 @@ const LEG_SPLAY := 2.05
 ## segment comes down past vertical and the foot reaches the floor
 ## well outside the body.
 const KNEE_FOLD := 2.45
+## A real spider's leg is NOT two equal bones: a shorter femur reaches
+## out to the side, then a long tibia runs down to the ground. That
+## split is what LIFTS the body (STO-ENEMIES-020). With equal segments
+## the fold eats the extra length and longer legs just splay wider
+## while the body stays at knee height.
+const FEMUR_FRACTION := 0.34
 
 @export var variation_seed: int = 0
 @export var base_color: Color = Color(0.35, 0.55, 0.30)
@@ -62,8 +68,10 @@ func _ready() -> void:
 	# One block, low and wide, carried between BIG legs
 	# (STO-ENEMIES-019). The legs, not the body, are what you see.
 	_body_size = Vector3(0.40 * bulk, 0.24 * bulk, 0.52 * bulk)
-	_leg_len = 0.86 * lanky      # was 0.46 — long enough to splay
-	_leg_th = 0.13 * bulk        # was 0.09 — chunky
+	# TOWERING (STO-ENEMIES-020): long enough that its body rides
+	# above head height and you walk underneath it.
+	_leg_len = 4.80 * lanky
+	_leg_th = 0.15 * bulk
 
 	_mat = StandardMaterial3D.new()
 	_mat.albedo_color = base_color
@@ -88,11 +96,23 @@ func _build_body() -> void:
 	add_child(block)
 
 
-## How high the block rides. Well under the legs' full length,
-## because a spider's body hangs BETWEEN its legs rather than sitting
-## on top of them (STO-ENEMIES-019).
+## How high the block rides — DERIVED from the leg geometry, not
+## picked (STO-ENEMIES-020).
+##
+## The femur goes out and UP by cos(splay); the tibia then comes down
+## by cos(splay - fold). Whatever is left over is how high the body can
+## sit with its feet still on the floor. Choosing a height instead
+## leaves the feet floating above the ground or buried in it.
 func _body_height() -> float:
-	return _leg_len * 0.52
+	var femur := _leg_len * FEMUR_FRACTION
+	var tibia := _leg_len * (1.0 - FEMUR_FRACTION)
+	# Each segment's contribution to the foot's HEIGHT. The femur's is
+	# positive (out and up), the tibia's negative (down to the floor).
+	# The body must sit exactly as high as their sum drops, or the feet
+	# float above the ground / sink through it.
+	var knee_rise := femur * -cos(LEG_SPLAY)
+	var tibia_fall := tibia * -cos(LEG_SPLAY - KNEE_FOLD)
+	return maxf(-(knee_rise + tibia_fall), 0.2)
 
 
 func _build_leg(def: Dictionary) -> void:
@@ -109,12 +129,13 @@ func _build_leg(def: Dictionary) -> void:
 	root.rotation = Vector3(0.0, 0.0, side * LEG_SPLAY)
 	add_child(root)
 
-	var seg_len := _leg_len / float(SEGMENTS)
-	var upper := _make_segment("Upper", seg_len)
+	var femur := _leg_len * FEMUR_FRACTION
+	var tibia := _leg_len * (1.0 - FEMUR_FRACTION)
+	var upper := _make_segment("Upper", femur)
 	root.add_child(upper)
-	var lower := _make_segment("Lower", seg_len)
+	var lower := _make_segment("Lower", tibia)
 	lower.set_meta("side", side)
-	lower.position = Vector3(0.0, -seg_len, 0.0)
+	lower.position = Vector3(0.0, -femur, 0.0)
 	# Folds back in the SAME plane as the splay, so the lower segment
 	# comes down to the floor instead of swinging off sideways.
 	lower.rotation = Vector3(0.0, 0.0, -side * KNEE_FOLD)
@@ -122,7 +143,7 @@ func _build_leg(def: Dictionary) -> void:
 
 	_legs.append({
 		"root": root, "upper": upper, "lower": lower,
-		"pair": int(def["pair"]), "seg": seg_len,
+		"pair": int(def["pair"]), "seg": tibia,
 	})
 
 

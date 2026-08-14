@@ -133,6 +133,8 @@ func _ready() -> void:
 	_collider.shape = cap
 	_collider.position = Vector3(0.0, 0.8, 0.0)
 	add_child(_collider)
+	# Resized below for kinds that are not humanoid — a towering
+	# spider with a human-sized hitbox would let you punch thin air.
 
 	# A procedurally-generated humanoid body, like the player's
 	# (STO-ENEMIES-003). Seeded from the node name so every enemy is a
@@ -174,6 +176,13 @@ func _ready() -> void:
 		_com_h = 0.55
 		_stability = 1.15          # four legs are hard to topple
 		_getup_time = GETUP_TIME * (0.75 + 0.5 * _mass)
+		# Hitbox to match: tall enough to reach its body, wide enough
+		# to cover the legs (STO-ENEMIES-020).
+		var bh: float = _body.call("body_height")
+		var qcap := _collider.shape as CapsuleShape3D
+		qcap.height = maxf(bh + qs.y, 1.0)
+		qcap.radius = maxf(qs.x * 1.6, 0.5)
+		_collider.position = Vector3(0.0, qcap.height * 0.5, 0.0)
 		return
 	var bk: float = _body.get("_bulk")
 	var lg: float = _body.get("_leg_scale")

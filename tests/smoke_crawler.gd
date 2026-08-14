@@ -120,6 +120,35 @@ func _physics_process(_d: float) -> bool:
 			_check(above == 4,
 					"all 4 knees rise ABOVE the body (%d of 4, body at %.2f)"
 					% [above, bh])
+			# --- IT TOWERS (STO-ENEMIES-020) -----------------------
+			var bh2: float = _body.call("body_height")
+			# Measured against the PLAYER's real eye height, not a
+			# guessed number.
+			var pl2 := _main.get_node_or_null("Players/1") as Node3D
+			var eye_h := 1.6
+			if pl2 != null and pl2.get_node_or_null("Camera3D") != null:
+				eye_h = (pl2.get_node("Camera3D") as Node3D).position.y
+			_check(bh2 > eye_h,
+					"its body rides above the player's head (%.2f vs eye %.2f)"
+					% [bh2, eye_h])
+			# ...and the feet still reach the floor. Raising the body
+			# without deriving it from the legs leaves them dangling.
+			var lowest := 999.0
+			for f2 in _body.call("foot_positions"):
+				lowest = minf(lowest, (f2 as Vector3).y)
+			_check(absf(lowest) < 0.25,
+					"the feet still reach the ground (lowest foot y %.2f)"
+					% lowest)
+			# The hitbox grew with it.
+			var col := _crawler.get_node_or_null("CollisionShape3D") as CollisionShape3D
+			if col == null:
+				for ch in _crawler.get_children():
+					if ch is CollisionShape3D:
+						col = ch
+			var cap := col.shape as CapsuleShape3D if col != null else null
+			_check(cap != null and cap.height > 2.0,
+					"its hitbox grew to match (%.2f tall)"
+					% (cap.height if cap != null else -1.0))
 			_next("gait")
 		"gait":
 			# --- IT STEPS -------------------------------------------
