@@ -93,7 +93,12 @@ var _zip_time := 0.0
 # Grabber throw (STO-CHARACTER-026): grab a box/enemy and hurl it forward.
 const THROW_GRAB_RANGE := 3.4
 const THROW_FORCE := 22.0
-const THROW_HOLD_DIST := 1.6    # how far in front the held object floats
+## How far in front a held object floats, measured from the CAMERA
+## (STO-CHARACTER-054). It used to be 1.6 m from the player's origin
+## plus 0.3 m of height — knee level, tucked against the body, so it
+## read as being pulled to you rather than held, and it sat in the way
+## of the very aim you were lining up.
+const THROW_HOLD_DIST := 2.4
 var _held: Node
 # Grabber pull (STO-CHARACTER-027): yank an enemy/box toward you.
 const PULL_RANGE := 14.0
@@ -936,17 +941,20 @@ func _update_heal(delta: float) -> void:
 
 ## Read ability keys each tick and trigger the ones this character has.
 func _update_abilities() -> void:
-	# Guard key (C): the Grabber blocks (held), the Runner dodge-rolls (tap).
-	if _has_ability("block"):
-		_blocking = Input.is_action_pressed("ability_guard")
-		if Input.is_action_just_pressed("ability_guard"):
-			do_parry()
-	if _has_ability("dodge") and Input.is_action_just_pressed("ability_guard"):
-		do_dodge()
+	# C and G are DEAD KEYS (STO-CHARACTER-056).
+	#
+	# G was the throw — RMB does that now, and better
+	# (STO-CHARACTER-055), so it was a worse version of a job already
+	# taken. C was block, parry and dodge-roll, and the operator chose
+	# to drop it knowing what it costs: since STO-ENEMIES-011 enemies
+	# actually attack, this leaves NO defence but footwork. Walking out
+	# of range during the 0.55 s wind-up is now the only answer.
+	#
+	# do_parry / do_dodge / do_throw are deliberately still here, just
+	# unreachable from the keyboard, so putting them on another key is
+	# one line rather than a rewrite.
 	if _has_ability("zip") and Input.is_action_just_pressed("ability_zip"):
 		do_zip()
-	if _has_ability("throw") and Input.is_action_just_pressed("ability_throw"):
-		do_throw()
 	if _has_ability("pull") and Input.is_action_just_pressed("ability_pull"):
 		do_pull()
 	# Keep a held object floating in front of the Grabber.
@@ -1052,7 +1060,9 @@ func _release_throw() -> void:
 
 
 func _carry_held() -> void:
-	var pos := global_position + Vector3.UP * 0.3 + _aim_forward() * THROW_HOLD_DIST
+	# From the camera, so it sits at eye level and follows the look
+	# direction up and down instead of hovering by the player's knees.
+	var pos := camera.global_position + _aim_forward() * THROW_HOLD_DIST
 	var n := _held as Node3D
 	if n != null:
 		n.global_position = pos

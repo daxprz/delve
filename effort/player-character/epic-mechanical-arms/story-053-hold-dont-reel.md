@@ -12,6 +12,13 @@ bd-id: delve-lsc
 
 # A grabbed crate stays where it is instead of being reeled in
 
+> **SUPERSEDED by STO-CHARACTER-055 (2026-08-13).** The operator
+> played this and asked for the crate to be picked **up** and held
+> **out in front** instead of staying put. What shipped here was
+> correct for what was asked at the time, and the reasoning below is
+> still why a grabbed crate must never be *reeled into the player* —
+> which remains true in 055. Only the "stays put" outcome is replaced.
+
 ## Summary
 
 When the Grabber's arm latches onto a loose object — a crate — the

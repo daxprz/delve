@@ -3,9 +3,12 @@ extends SceneTree
 ##   godot --headless -s res://tests/smoke_enemy_attack.gd
 ##
 ## Before this, enemy.gd said "Enemies only chase — they do not deal
-## damage", so nothing in delve could hurt you. Health, healing, the
-## Grabber's guard and the Runner's dodge roll had never once been
-## tested against something that actually attacks.
+## damage", so nothing in delve could hurt you.
+##
+## Guarding and dodge-rolling WERE proven here (3.0 damage vs 12.0,
+## and none at all mid-roll) until STO-CHARACTER-056 made C a dead
+## key. There is no defence but footwork now, which is what the last
+## phase checks.
 
 var _failures := 0
 var _ticks := 0
@@ -16,7 +19,6 @@ var _player: CharacterBody3D
 var _start_hp := 0.0
 var _saw_windup := false
 var _swings_before := 0
-var _guarded_loss := 0.0
 
 
 func _physics_process(_d: float) -> bool:
@@ -80,7 +82,7 @@ func _physics_process(_d: float) -> bool:
 				var wall := _find_wall()
 				if wall == null:
 					_check(false, "found a wall to hide behind")
-					_next("guard")
+					_next("nodefence")
 					return false
 				var wp: Vector3 = wall.global_position
 				_player.global_position = wp + Vector3(0.0, 1.0, -1.2)
@@ -93,53 +95,32 @@ func _physics_process(_d: float) -> bool:
 				var through := int(_enemy.call("swings")) - _swings_before
 				_check(through == 0,
 						"a wall blocks the attack (%d blows got through)" % through)
-				_next("guard")
-		"guard":
-			# Measured on the blow itself rather than in a live fight:
-			# pressing guard ALSO fires a parry, which shoves the enemy
-			# out of range, so it never gets to swing. hurt_by_enemy is
-			# the exact call an enemy's blow makes.
+				_next("nodefence")
+		"nodefence":
+			# There is NO defence any more (STO-CHARACTER-056).
+			#
+			# This phase used to prove that guarding softened a blow to
+			# a quarter and a dodge roll took none at all. Both were
+			# true, and both were on C — which the operator chose to
+			# make a dead key, knowing the cost. Footwork during the
+			# 0.55 s wind-up is the only answer now.
+			#
+			# The block/parry/dodge CODE still exists, unhooked; that
+			# the keys do nothing is covered by smoke_dead_keys.gd.
 			if _ticks < 2:
 				_player.global_position = Vector3(0.0, 1.0, 40.0)
 				_player.call("set_health", 100.0)
-				Input.action_press("ability_guard")   # parry fires now
+				Input.action_press("ability_guard")   # dead key
 				return false
 			if _ticks < 12:
-				return false                          # let the parry pass
-			if _ticks == 12:
-				_player.call("set_health", 100.0)
-				_player.call("hurt_by_enemy", 12.0)
-				_guarded_loss = 100.0 - float(_player.call("health"))
-				Input.action_release("ability_guard")
-				return false
-			if _ticks < 20:
 				return false
 			_player.call("set_health", 100.0)
+			var hp_before := float(_player.call("health"))
 			_player.call("hurt_by_enemy", 12.0)
-			var open_loss := 100.0 - float(_player.call("health"))
-			_check(open_loss > 0.0,
-					"an unguarded blow hurts (%.1f)" % open_loss)
-			_check(_guarded_loss < open_loss,
-					"guarding softens the blow (%.1f guarded vs %.1f open)"
-					% [_guarded_loss, open_loss])
-			_next("dodge")
-		"dodge":
-			# A dodge roll is invincible (STO-CHARACTER-030) and has
-			# likewise never been tested against a real attack.
-			if _ticks < 2:
-				_player.call("set_health", 100.0)
-				_player.call("do_dodge")
-				return false
-			if not bool(_player.call("is_rolling")):
-				_check(false, "the player is mid-roll")
-				return _finish()
-			_player.call("hurt_by_enemy", 12.0)
-			# Not is_equal_approx: heal-over-time nudges health a
-			# fraction above 100 between ticks, so exact equality fails
-			# on a roll that worked perfectly.
-			var after := float(_player.call("health"))
-			_check(after >= 99.5,
-					"a dodge roll dodges the blow entirely (%.2f hp)" % after)
+			var lost := hp_before - float(_player.call("health"))
+			Input.action_release("ability_guard")
+			_check(lost > 11.0,
+					"a blow costs full damage even holding C (%.1f)" % lost)
 			return _finish()
 	return false
 

@@ -1,14 +1,16 @@
 extends SceneTree
 ## Headless smoke test for the Grabber holding a loose crate.
 ##
-## STO-CHARACTER-003 originally REELED a grabbed crate toward the hand.
-## STO-CHARACTER-053 reversed that on the operator's instruction: the
-## crate must now stay exactly where it is, with the arm stretching out
-## to reach it, so a throw launches from a standing start and lands in
-## the same place every time.
+## This behaviour has been changed three times, each after the operator
+## played the previous version:
 ##
-## This test was inverted deliberately — the requirement changed, the
-## code did not merely drift.
+##   STO-CHARACTER-003  reeled the crate INTO the shoulder
+##   STO-CHARACTER-053  left it exactly where it was
+##   STO-CHARACTER-055  picks it UP and holds it OUT IN FRONT
+##
+## The one constant: it must never be dragged into the player. That is
+## what this test guards, and it is the assertion that has survived
+## every rewrite. Detailed hold position lives in smoke_rmb_pickup.gd.
 ## Run with:  godot --headless -s res://tests/smoke_grab_box.gd
 
 const SETTLE := 30
@@ -77,19 +79,18 @@ func _physics_process(_delta: float) -> bool:
 func _check_reeled() -> void:
 	var sp: Vector3 = _arms.shoulder_point(0)
 	var after := sp.distance_to(_box.global_position)
-	# THE POINT (STO-CHARACTER-053): it must NOT come to you.
-	if after > _dist_before - 0.3:
-		_pass("the grabbed crate stays put (%.2f -> %.2f m from the shoulder)"
-				% [_dist_before, after])
+	# THE ONE CONSTANT (003 -> 053 -> 055): never dragged into you.
+	if after > 1.0:
+		_pass("the held crate is kept away from the player (%.2f m from the shoulder)"
+				% after)
 	else:
-		_fail("the crate was dragged toward the player (%.2f -> %.2f m)"
+		_fail("the crate was dragged into the player (%.2f -> %.2f m)"
 				% [_dist_before, after])
-	# And it must not have wandered off on its own either.
-	var moved := _box_start.distance_to(_box.global_position)
-	if moved < 0.5:
-		_pass("it stayed where it was grabbed (moved %.2f m)" % moved)
+	# It is HELD, so it must not simply drop to the floor either.
+	if _box.global_position.y > 0.6:
+		_pass("it is held up rather than dropped (y %.2f)" % _box.global_position.y)
 	else:
-		_fail("it drifted %.2f m from where it was grabbed" % moved)
+		_fail("the held crate fell to the floor (y %.2f)" % _box.global_position.y)
 
 
 func _done() -> bool:

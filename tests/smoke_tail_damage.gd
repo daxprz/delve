@@ -21,9 +21,14 @@ func _setup() -> bool:
 	CharacterDB.selected_index = 1  # Runner (has the tail)
 	_main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_main)
-	_main.host_game()
-	_main.start_game()   # the lobby no longer starts the game for you
-	_player = _main.get_node_or_null("Players/1") as CharacterBody3D
+	# Spawn the player directly instead of hosting (STO-TOOLS-009).
+	# Nothing here needs a network, and host_game() binds UDP 7777, so
+	# this test could not run at all while the operator had the game
+	# open — which is how two tests once shipped failing unnoticed.
+	var _p: CharacterBody3D = load("res://scenes/player.tscn").instantiate()
+	_p.name = "1"
+	_main.get_node("Players").add_child(_p)
+	_player = _p
 	var enemies := _main.get_node_or_null("Enemies")
 	if _player == null or enemies == null or enemies.get_child_count() == 0:
 		_fail("missing player or enemies")

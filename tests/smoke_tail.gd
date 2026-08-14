@@ -36,9 +36,14 @@ func _setup() -> bool:
 	CharacterDB.selected_index = 1
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
-	main.host_game()
-	main.start_game()   # the lobby no longer starts the game for you
-	_runner = main.get_node_or_null("Players/1")
+	# Spawn the player directly instead of hosting (STO-TOOLS-009).
+	# Nothing here needs a network, and host_game() binds UDP 7777, so
+	# this test could not run at all while the operator had the game
+	# open — which is how two tests once shipped failing unnoticed.
+	var _r: CharacterBody3D = load("res://scenes/player.tscn").instantiate()
+	_r.name = "1"
+	main.get_node("Players").add_child(_r)
+	_runner = _r
 	if _runner == null:
 		_fail("no Runner spawned")
 		return false

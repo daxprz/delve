@@ -92,13 +92,18 @@ func _physics_process(_d: float) -> bool:
 			_next("falls")
 		"falls":
 			# A loose limb is a real object: it must fall and settle.
-			if _ticks < 90:
+			if _ticks < 180:   # 3 s: time to actually land
 				return false
 			_check(is_instance_valid(_arm), "the loose arm still exists")
 			if not is_instance_valid(_arm):
 				return _finish()
-			_check(_arm.global_position.y < _arm_pos.y - 0.05,
-					"the loose arm falls (y %.2f -> %.2f)"
+			# Assert it ends up ON THE FLOOR, not merely lower than it
+			# was at the instant of detachment. The ragdoll is still
+			# flying when the arm comes off, so "lower than the detach
+			# point" depends on where in its arc it happened to be —
+			# that made this flake when the body was on the way up.
+			_check(_arm.global_position.y < 1.5,
+					"the loose arm falls to the floor (y %.2f -> %.2f)"
 					% [_arm_pos.y, _arm.global_position.y])
 			# The rest of the body must not have exploded where the arm
 			# was — delve has been bitten by joint instability before.

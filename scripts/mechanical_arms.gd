@@ -75,7 +75,9 @@ const RAM_KNOCKBACK_LIFT := 0.35    # how much of the hit goes upward
 ## Hauling a grabbed enemy along (STO-CHARACTER-045): a limp body is
 ## ~60 kg of jointed parts, so the box's gentle reel impulse could not
 ## shift it. Steer the held part toward a carry point instead.
-const HOLD_DIST := 1.6              # how far in front the body is carried
+## How far in front a grabbed body is carried (STO-CHARACTER-054:
+## raised from 1.6, which hauled it in against the player).
+const HOLD_DIST := 2.4
 const HOLD_STIFFNESS := 11.0
 const HOLD_MAX_SPEED := 16.0
 const RAM_SHOCKWAVE_SPEED := 9.0    # momentum needed for a shockwave on a ram hit
@@ -338,10 +340,7 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 	# impulse-based reel cannot move ~60 kg of jointed ragdoll.
 	if enemy != null and is_instance_valid(enemy) \
 			and body != null and is_instance_valid(body) and body is RigidBody3D:
-		var fwd: Vector3 = -_player.global_transform.basis.z
-		fwd.y = 0.0
-		fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
-		var carry: Vector3 = shoulder + fwd * HOLD_DIST
+		var carry := _carry_point(shoulder)
 		var to_carry: Vector3 = carry - (body as RigidBody3D).global_position
 		var v: Vector3 = to_carry * HOLD_STIFFNESS
 		if v.length() > HOLD_MAX_SPEED:
@@ -352,17 +351,24 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 		return
 
 	if body != null and is_instance_valid(body) and body is RigidBody3D:
-		# Grabbed a loose body (a crate): LEAVE IT WHERE IT IS
-		# (STO-CHARACTER-053). The arm stretches out to reach it and the
-		# crate launches from there.
+		# Grabbed a loose body (a crate): PICK IT UP and hold it OUT IN
+		# FRONT (STO-CHARACTER-055, superseding 053).
 		#
-		# It used to be reeled toward the shoulder by an impulse every
-		# tick, so it accelerated at the player, overshot, bounced off
-		# and got yanked back — never settling. Whatever speed it
-		# happened to carry at the moment of release was added to the
-		# throw, so the same throw landed somewhere different each time.
-		# Applying no force at all is what makes a throw repeatable.
-		arm["target"] = body.global_position
+		# Steered to a carry point rather than shoved with impulses.
+		# The original version fired an impulse at the shoulder every
+		# tick, so the crate accelerated at the player, overshot,
+		# bounced off and got yanked back — never settling, and its
+		# leftover speed was added to every throw. Steering to a fixed
+		# point in front holds it still, which is what makes a throw
+		# repeatable AND keeps it out of the way of your aim.
+		var rb := body as RigidBody3D
+		var carry_p := _carry_point(shoulder)
+		var to_c: Vector3 = carry_p - rb.global_position
+		var vel: Vector3 = to_c * HOLD_STIFFNESS
+		if vel.length() > HOLD_MAX_SPEED:
+			vel = vel.normalized() * HOLD_MAX_SPEED
+		rb.linear_velocity = vel
+		arm["target"] = rb.global_position
 		return
 
 	# Grabbed something SOLID (wall, pillar, floor): the arm reels the
@@ -374,6 +380,22 @@ func _apply_grab_pull(arm: Dictionary) -> void:
 	var d := to_anchor.length()
 	if d > SELF_PULL_STOP:
 		_player.grapple_pull += to_anchor / d * SELF_PULL
+
+
+## Where a held thing floats: out in front of the EYE, not the hips.
+##
+## Taken from the camera so it sits at eye level and follows the look
+## direction up and down. It used to be the player's flattened facing
+## from the shoulder, which meant looking up or down left the held
+## object stubbornly at hip height — in the way of the very aim you
+## were lining up (STO-CHARACTER-054/055).
+func _carry_point(shoulder: Vector3) -> Vector3:
+	if _camera != null and is_instance_valid(_camera):
+		return _camera.global_position - _camera.global_transform.basis.z * HOLD_DIST
+	var fwd: Vector3 = -_player.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.001 else Vector3.FORWARD
+	return shoulder + fwd * HOLD_DIST
 
 
 func _update_visual(arm: Dictionary) -> void:

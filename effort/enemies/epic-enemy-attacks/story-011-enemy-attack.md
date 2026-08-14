@@ -31,8 +31,10 @@ always be something you could have avoided.
 - [x] An enemy close enough to a player can hurt it (12 damage).
 - [x] There is a wind-up you can see coming — the enemy plants its
       feet and leans back before striking.
-- [x] Blocking works against it.
-- [x] Dodge-rolling works against it.
+- [x] Blocking works against it. *(No longer reachable by a player —
+      STO-CHARACTER-056 made C a dead key. The measurement below was
+      true when taken.)*
+- [x] Dodge-rolling works against it. *(Same — see below.)*
 - [x] An attack cannot land through a wall.
 - [x] Proven by a headless test (9 checks).
 
@@ -43,9 +45,18 @@ always be something you could have avoided.
 
 ## Verification notes (2026-08-07)
 
-`tests/smoke_enemy_attack.gd`, 9 checks. Guarding measured at **3.0
-damage vs 12.0 unguarded** — exactly the 25% the guard promises — and
-a dodge roll takes **none at all**.
+`tests/smoke_enemy_attack.gd`. Guarding measured at **3.0 damage vs
+12.0 unguarded** — exactly the 25% the guard promises — and a dodge
+roll took **none at all**.
+
+> **Both are now unreachable.** STO-CHARACTER-056 made **C** a dead
+> key at the operator's request, removing block, parry and dodge-roll
+> together. The code still exists, unhooked. So delve now has enemies
+> that attack and **no defence but footwork** — stepping out of range
+> during the 0.55 s wind-up. That telegraph carries the whole weight
+> of the fight being fair, which makes it the first thing to revisit
+> if fights feel cheap. The test's final phase asserts the new truth:
+> a blow costs full damage even with C held.
 
 ### Three things that went wrong on the way
 
