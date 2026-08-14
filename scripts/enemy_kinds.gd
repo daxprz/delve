@@ -22,6 +22,7 @@ const LIST: Array = [
 		"speed": 3.0,
 		"damage": 12.0,
 		"colour": Color(0.8, 0.2, 0.2),
+		"climbs": false,
 	},
 	{
 		"id": "crawler",
@@ -31,6 +32,7 @@ const LIST: Array = [
 		"speed": 1.6,             # LUMBERS — slower than the Walker's 3.0
 		"damage": 18.0,
 		"colour": Color(0.35, 0.55, 0.30),
+		"climbs": true,           # the spider's trick (STO-ENEMIES-024)
 	},
 ]
 

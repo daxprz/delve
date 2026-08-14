@@ -54,6 +54,37 @@ Two things only showed up by running it:
   own 9-part skeleton — block plus two segments per leg — chosen by
   asking the body whether it has legs to count.
 
+## The crash (2026-08-14)
+
+Reported by the operator: *"it crashes whenever I try to ragdoll the
+spider."*
+
+A plain knockdown was fine — the reproduction had to go through the
+tier BELOW a ragdoll. A **medium** hit puts an enemy in the stumble
+tier, which calls `_body.call("buckle_leg", ...)`. That is a HUMANOID
+move; a four-legged body does not have it:
+
+```
+SCRIPT ERROR: Invalid call. Nonexistent function 'buckle_leg'
+              in base 'Node3D (QuadrupedBody)'
+```
+
+Headless that is only an error line. In a **debug build it halts the
+game**, which is what the operator saw. So every spider that took a
+glancing blow — not a flooring one — killed the session.
+
+Guarded with `has_method` rather than a null check. A creature on four
+legs has no single leg to buckle, so it lurches instead.
+
+Found alongside it: a quadruped ragdoll has no `Torso` or `Pelvis`
+part, so the Grabber's `_attach` handed back **null** and the arm held
+nothing while believing it held an enemy. It now falls through to
+whatever that creature's core part is called.
+
+`smoke_crawler.gd` gained a phase that lands a medium hit
+specifically, because every existing test used a full ragdolling blow
+and sailed straight past the broken tier.
+
 ## Out of scope
 
 - The crawler having its own attack — it chases and swings like the

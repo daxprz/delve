@@ -79,6 +79,7 @@ var _health := MAX_HEALTH
 var _kind_id := "walker"
 var _max_health := MAX_HEALTH
 var _kind_speed := SPEED
+var _can_climb := false
 var _kind_damage := ATTACK_DAMAGE
 var _carried := false
 # Limbs (EPI-ENEMIES-ENEMY-LIMBS). A limb is a friendly name for the
@@ -105,6 +106,12 @@ var _lost: Array = []           # limb keys already torn off
 ## instead of vanishing. Capped, because each body is 11 rigid parts.
 const MAX_CORPSES := 8
 var _dead := false
+# Wall climbing (STO-ENEMIES-024) — the spider's trick, not the
+# Walker's. Four splayed legs gripping a surface is what a spider is
+# for, and nothing else in delve leaves the floor except the Flyer.
+const CLIMB_SPEED := 2.2       # how fast it goes up
+const CLIMB_REACH := 1.1       # how close a wall has to be to grip
+var _climbing := false
 
 var _windup := 0.0              # >0 while rearing back to strike
 var _attack_cd := 0.0           # rest timer between swings
@@ -125,6 +132,7 @@ func _ready() -> void:
 	_health = _max_health
 	_kind_speed = float(def["speed"])
 	_kind_damage = float(def["damage"])
+	_can_climb = bool(def.get("climbs", false))
 
 	_collider = CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
@@ -219,7 +227,11 @@ func _physics_process(delta: float) -> void:
 	if not multiplayer.is_server():
 		return  # server drives the enemies
 
-	if not is_on_floor():
+	# Climbing holds it against the wall, so gravity is off while it
+	# grips (STO-ENEMIES-024).
+	_climbing = _can_climb and not _dead and _ragdoll == null \
+			and _wall_ahead() != Vector3.ZERO
+	if not is_on_floor() and not _climbing:
 		velocity += get_gravity() * delta
 
 	var fall_speed := -velocity.y  # how fast we're dropping (before move)
@@ -307,6 +319,10 @@ func _physics_process(delta: float) -> void:
 				var spd := _move_speed()
 				velocity.x = dir.x * spd
 				velocity.z = dir.z * spd
+				# Against a wall with the player higher up? Go UP it.
+				if _climbing:
+					var up_needed: float = target.global_position.y - global_position.y
+					velocity.y = CLIMB_SPEED if up_needed > 0.3 else 0.0
 				look_at(global_position + dir, Vector3.UP)
 			else:
 				velocity.x = 0.0
@@ -492,6 +508,30 @@ func is_winding_up() -> bool:
 	return _windup > 0.0
 
 
+## The normal of a wall within reach, or ZERO if there is none.
+##
+## Cast in the direction we are already heading, at body height. Only
+## STATIC geometry counts as climbable — you cannot climb another
+## creature.
+func _wall_ahead() -> Vector3:
+	var dir := Vector3(velocity.x, 0.0, velocity.z)
+	if dir.length() < 0.1:
+		dir = -global_transform.basis.z
+	dir = dir.normalized()
+	var from_p := global_position + Vector3.UP * 0.6
+	var q := PhysicsRayQueryParameters3D.create(from_p, from_p + dir * CLIMB_REACH)
+	q.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty() or not (hit.get("collider") is StaticBody3D):
+		return Vector3.ZERO
+	return hit.get("normal", Vector3.ZERO)
+
+
+## Is this creature able to climb at all?
+func is_climbing() -> bool:
+	return _climbing
+
+
 func _nearest_player() -> Node3D:
 	var best: Node3D = null
 	var best_d := INF
@@ -545,7 +585,13 @@ func apply_knockback(impulse: Vector3, hit_point := Vector3.INF) -> void:
 		# The leg on the side being shoved TOWARD is the one that gives
 		# way (pushed right -> the right leg buckles under you).
 		_stumble_leg = 1 if local_dir.x > 0.0 else 0
-		if _body != null:
+		# has_method, NOT just null: buckle_leg is a HUMANOID move and
+		# a four-legged body does not have it. Calling it anyway threw
+		# "Nonexistent function 'buckle_leg'", which halts the game in a
+		# debug build — the crash the operator hit whenever a spider
+		# took a medium hit. A creature on four legs has no single leg
+		# to buckle, so it simply lurches instead.
+		if _body != null and _body.has_method("buckle_leg"):
 			# Slightly shorter than the stumble so the leg is back under
 			# them just before steering returns (and so the two timers,
 			# which tick in _process vs _physics_process, can't race).

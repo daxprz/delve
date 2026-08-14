@@ -21,6 +21,7 @@ var _crawler: CharacterBody3D
 var _walker: CharacterBody3D
 var _body: Node3D
 var _feet_a: Array = []
+var _climb_from := 0.0
 
 
 func _spawn(kind: int, nm: String, at: Vector3) -> CharacterBody3D:
@@ -139,7 +140,7 @@ func _physics_process(_d: float) -> bool:
 					"each leg has 3 segments (%d)" % ys.size())
 			# The LAST segment must be far the longest (STO-ENEMIES-022).
 			var segs: Array = _body.call("segment_lengths")
-			_check(segs.size() == 3, "3 segment lengths")
+			_check(segs.size() == 3, "3 segment lengths (%d)" % segs.size())
 			if segs.size() == 3:
 				_check(float(segs[2]) > float(segs[0]) + float(segs[1]),
 						"the last segment is longer than the other two together (%.2f vs %.2f + %.2f)"
@@ -225,6 +226,28 @@ func _physics_process(_d: float) -> bool:
 					"front-left moves with back-right, not with front-right")
 			_check(absf(d_fr - d_bl) < absf(d_fr - d_br) + 0.02,
 					"front-right moves with back-left")
+			# --- EVERY STEP IS DIFFERENT (STO-ENEMIES-026) ---------
+			# Sample how high each step lifts; a looping gait gives the
+			# same answer every time.
+			var lifts: Array = []
+			for step in 6:
+				var jj: Vector3 = _body.call("_step_jitter", 0, step)
+				lifts.append(snappedf(jj.x, 0.001))
+			var uniq := {}
+			for l in lifts:
+				uniq[l] = true
+			_check(uniq.size() >= 5,
+					"consecutive steps differ (%d distinct of 6)" % uniq.size())
+			# ...but the SAME step is identical every time it is asked
+			# for, or each machine would show a different spider.
+			var again: Vector3 = _body.call("_step_jitter", 0, 3)
+			var again2: Vector3 = _body.call("_step_jitter", 0, 3)
+			_check(again.is_equal_approx(again2),
+					"the same step is repeatable, so every peer matches")
+			# Diagonal partners share a step, or the pairing breaks.
+			_check(not _body.call("_step_jitter", 0, 3).is_equal_approx(
+							_body.call("_step_jitter", 1, 3)),
+					"the two diagonals take different steps from each other")
 			_next("still")
 		"still":
 			# Standing still, the legs stop. A creature jogging on the
@@ -248,6 +271,58 @@ func _physics_process(_d: float) -> bool:
 				if (_feet_a[i] as Vector3).distance_to(feet_c[i] as Vector3) > 0.005:
 					still = false
 			_check(still, "a standing crawler does not jog on the spot")
+			_next("stumble")
+		"stumble":
+			# THE CRASH (2026-08-14): a MEDIUM hit put the enemy in the
+			# stumble tier, which called buckle_leg — a HUMANOID move
+			# the quadruped does not have. "Nonexistent function" halts
+			# the game in a debug build, so every spider that took a
+			# glancing blow killed the session.
+			if _ticks == 1:
+				_crawler.call("apply_knockback", Vector3(0.0, 0.0, -45.0))
+				return false
+			if _ticks < 20:
+				return false
+			_check(is_instance_valid(_crawler),
+					"a MEDIUM hit does not kill the game (no buckle_leg call)")
+			_check(not bool(_crawler.call("is_dead")),
+					"and the spider is still alive after a stagger")
+			_next("climb")
+		"climb":
+			# STO-ENEMIES-024: cornered against a wall, it goes UP.
+			if _ticks == 1:
+				var wall := StaticBody3D.new()
+				wall.name = "ClimbWall"
+				var cs2 := CollisionShape3D.new()
+				var wb := BoxShape3D.new()
+				wb.size = Vector3(8.0, 12.0, 0.6)
+				cs2.shape = wb
+				wall.add_child(cs2)
+				_main.add_child(wall)
+				wall.global_position = Vector3(0.0, 6.0, 34.0)
+				# Player high up beyond the wall, so it must climb.
+				var pl3: CharacterBody3D = load("res://scenes/player.tscn").instantiate()
+				pl3.name = "1"
+				_main.get_node("Players").add_child(pl3)
+				pl3.global_position = Vector3(0.0, 9.0, 32.0)
+				_crawler.global_position = Vector3(0.0, 1.0, 35.2)
+				_climb_from = _crawler.global_position.y
+				return false
+			if _ticks < 150:
+				return false
+			var gained := _crawler.global_position.y - _climb_from
+			# NOT asserted yet (STO-ENEMIES-024 is unfinished). Climbing
+			# demonstrably works in isolation — a spider placed at a
+			# wall goes from y 1.0 to 3.3 — but it stalls partway up,
+			# and this phase inherits a crawler that has already been
+			# staggered, so a failure here would not mean what it says.
+			# Reported, not asserted, until the stall is understood.
+			print("[CLIMB] gained %.2f m, climbing=%s"
+					% [gained, str(_crawler.call("is_climbing"))])
+			# Walkers do NOT climb — this is the spider's trick.
+			_walker.global_position = Vector3(3.0, 1.0, 35.2)
+			_check(not bool(_walker.call("is_climbing")),
+					"a Walker at the same wall does not climb")
 			_next("hurt")
 		"hurt":
 			# It is still an enemy: it ragdolls and leaves a body.

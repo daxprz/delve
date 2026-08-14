@@ -903,9 +903,15 @@ func _attach(arm: Dictionary, col) -> void:
 		var rag: Node3D = col.call("ragdoll_now")
 		if rag != null:
 			# Hold the torso — grabbing a limp body by the middle.
+			# Torso and Pelvis are HUMANOID part names; a spider ragdoll
+			# has neither, so grabbing one used to hand back null and
+			# leave the arm holding nothing while thinking it held an
+			# enemy. Fall through to whatever that creature's core part
+			# is actually called.
 			var part: RigidBody3D = rag.call("part", "Torso")
-			if part == null:
-				part = rag.call("part", "Pelvis")
+			for fallback in ["Pelvis", "Block"]:
+				if part == null:
+					part = rag.call("part", fallback)
 			arm["grabbed_body"] = part
 			arm["grabbed_enemy"] = col
 			return

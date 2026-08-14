@@ -32,6 +32,9 @@ const SEGMENTS := 3
 ##
 ## Jittered per spider from its seed, so no two have the same build —
 ## some lankier, some more gathered up.
+## Three. A fourth foot segment was added and then removed at the
+## operator's request (STO-ENEMIES-025) — the leg ends at the long
+## reach.
 const SEGMENT_FRACTIONS: Array = [0.13, 0.19, 0.68]
 ## Cumulative angle of each segment from straight-down, in radians.
 ## Direction is (sin, -cos), so under 90 degrees points DOWN and over
@@ -233,8 +236,8 @@ func _process(delta: float) -> void:
 	if _legs.is_empty():
 		return
 	_phase += delta * STEP_RATE * clampf(_speed / 3.0, 0.0, 2.0)
-	for leg_v in _legs:
-		var leg: Dictionary = leg_v
+	for leg_i in _legs.size():
+		var leg: Dictionary = _legs[leg_i]
 		# Diagonal pairs are half a stride apart, so one diagonal is
 		# always down while the other swings.
 		var t: float = _phase + (0.5 if int(leg["pair"]) == 1 else 0.0)
@@ -245,14 +248,36 @@ func _process(delta: float) -> void:
 		#
 		#   stance (0.0 - 0.6): foot planted, sweeping steadily BACK
 		#   swing  (0.6 - 1.0): foot lifts and returns forward, fast
+		# EVERY STEP IS DIFFERENT (STO-ENEMIES-026). Without this a
+		# spider replays one identical stride forever, which is what
+		# makes procedural walking read as a loop instead of a walk.
+		#
+		# Derived from (this spider's seed, which leg, which step), NOT
+		# from randf(): the gait runs on every machine independently, so
+		# a random number would give each peer a different-looking
+		# spider. The same three inputs give the same step everywhere.
+		var step_i: int = int(floor(t))
+		# Jittered per PAIR, not per leg. Per-leg jitter desynchronised
+		# the diagonals — and diagonal partners moving together is the
+		# whole reason it is never left unsupported. Partners now take
+		# the SAME varied step, and every step still differs.
+		var j := _step_jitter(int(leg["pair"]), step_i)
+		var lift_scale: float = 0.55 + 0.9 * j.x       # 0.55 - 1.45 high
+		var reach_scale: float = 0.75 + 0.5 * j.y      # 0.75 - 1.25 long
+		# Even the split between planted and swinging shifts, so some
+		# steps are hurried and some are dragged.
+		var stance: float = 0.5 + 0.2 * j.z            # 0.50 - 0.70
+
 		var swing := 0.0
 		var lift := 0.0
-		if p < 0.6:
-			swing = lerpf(1.0, -1.0, p / 0.6)     # planted, pushing back
+		if p < stance:
+			swing = lerpf(1.0, -1.0, p / stance)  # planted, pushing back
 		else:
-			var q: float = (p - 0.6) / 0.4
+			var q: float = (p - stance) / (1.0 - stance)
 			swing = lerpf(-1.0, 1.0, q)           # reaching forward again
 			lift = sin(q * PI)                    # and clear of the ground
+		swing *= reach_scale
+		lift *= lift_scale
 		var upper: Node3D = leg["upper"]
 		var lower: Node3D = leg["lower"]
 		# Applied ON TOP of the splayed rest pose, not instead of it —
@@ -262,11 +287,27 @@ func _process(delta: float) -> void:
 		lower.rotation.x = -lift * STEP_LIFT * 4.0
 
 
+## Three repeatable "random" numbers in 0-1 for one leg's one step.
+##
+## Hashed from the spider's seed plus which leg and which step, so it
+## is stable for that exact step on every machine — the same spider
+## takes the same walk everywhere, while still never repeating itself.
+func _step_jitter(pair_index: int, step_index: int) -> Vector3:
+	var base: int = variation_seed * 73856093 + pair_index * 19349663 \
+			+ step_index * 83492791
+	var a: int = absi(hash(base))
+	var b: int = absi(hash(base + 1))
+	var c: int = absi(hash(base + 2))
+	return Vector3(float(a % 1000) / 999.0,
+			float(b % 1000) / 999.0,
+			float(c % 1000) / 999.0)
+
+
 ## Where each foot is, in local space (for tests).
 func foot_positions() -> Array:
 	var out: Array = []
-	for leg_v in _legs:
-		var leg: Dictionary = leg_v
+	for leg_i in _legs.size():
+		var leg: Dictionary = _legs[leg_i]
 		var lower: Node3D = leg["lower"]
 		out.append(to_local(lower.global_transform * Vector3(0.0, -float(leg["seg"]), 0.0)))
 	return out
@@ -275,8 +316,8 @@ func foot_positions() -> Array:
 ## Where each KNEE is, in local space (for tests).
 func knee_positions() -> Array:
 	var out: Array = []
-	for leg_v in _legs:
-		var leg: Dictionary = leg_v
+	for leg_i in _legs.size():
+		var leg: Dictionary = _legs[leg_i]
 		var lower: Node3D = leg["lower"]
 		out.append(to_local(lower.global_position))
 	return out
