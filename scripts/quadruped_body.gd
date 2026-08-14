@@ -74,6 +74,41 @@ const KNEE_FOLD := 2.45
 ## while the body stays at knee height.
 const FEMUR_FRACTION := 0.34
 
+# --- Floppy limbs (STO-ENEMIES-037) ----------------------------------
+# Long loose limbs slung off a body that drags them around, rather than
+# a frame with everything bolted where it belongs.
+#
+# Driven by what the creature is ACTUALLY doing — start, stop or turn
+# and the limbs lag, then overshoot and settle. Not a looping wobble:
+# a spider standing still has still legs, which is the same principle
+# the gait already follows and the reason this reads as weight rather
+# than as an effect pasted on top.
+## Radians of lag per m/s that the creature's velocity has run ahead of
+## its own smoothed velocity — i.e. per unit of starting, stopping or
+## turning. NOT per unit of acceleration: see _update_flop for why
+## double-differencing position was abandoned.
+const FLOP_DRIVE := 0.075
+## How fast the smoothed velocity catches up. Lower = limbs notice
+## slower changes; higher = only sharp lurches register.
+const FLOP_SMOOTH := 6.0
+## How hard limbs are pulled back into line.
+const FLOP_STIFF := 7.0
+## Damping. Deliberately LOW — this is what makes them overshoot and
+## swing past instead of easing neatly home. Rubbery was asked for.
+const FLOP_DAMP := 2.4
+## Ceiling on the lag, so a violent shove cannot fold the legs inside
+## out.
+const FLOP_MAX := 0.60
+## How much each driven joint swings. The far joint swings more than
+## the near one, which is what a long loose limb does — equal shares
+## would read as the whole leg rotating rigidly about its socket.
+const FLOP_NEAR := 0.40
+const FLOP_FAR := 1.00
+## How far a limb hangs when a hit knocks the life out of it.
+const LIMP_DROOP := 0.85
+## How long it dangles before gathering itself back up.
+const LIMP_TIME := 0.7
+
 @export var variation_seed: int = 0
 @export var base_color: Color = Color(0.35, 0.55, 0.30)
 
@@ -87,6 +122,13 @@ var _fracs: Array = SEGMENT_FRACTIONS.duplicate()
 var _angles: Array = SEGMENT_ANGLES.duplicate()
 var _mat: StandardMaterial3D
 var _pincers: Node3D          # the reaching arms (STO-ENEMIES-030)
+# Floppiness (STO-ENEMIES-037): a damped spring chasing the lag that
+# the creature's own acceleration calls for.
+var _flop := Vector2.ZERO     # current lag, local (x = sideways, y = fore/aft)
+var _flop_v := Vector2.ZERO   # its velocity, which is what overshoots
+var _prev_pos := Vector3.INF
+var _vel_smooth := Vector3.ZERO
+var _limp := 0.0              # seconds of dangle left
 var _speed := 0.0
 
 
@@ -218,9 +260,18 @@ func _build_leg(def: Dictionary) -> void:
 		last = joint
 		last_len = seg_len
 
+	# The rest Z of each driven joint is recorded, because floppiness
+	# has to be applied as rest+lag and NEVER as `rotation.z +=`. Adding
+	# to a rotation every frame compounds it: the legs would wind
+	# further round on every tick until the spider turned itself inside
+	# out (STO-ENEMIES-037).
+	var upper_node: Node3D = root.get_node("Upper")
 	_legs.append({
-		"root": root, "upper": root.get_node("Upper"), "lower": last,
+		"root": root, "upper": upper_node, "lower": last,
 		"pair": int(def["pair"]), "seg": last_len,
+		"side": side,
+		"rest_z_upper": upper_node.rotation.z,
+		"rest_z_lower": last.rotation.z,
 	})
 
 
@@ -295,8 +346,118 @@ func _process(delta: float) -> void:
 		# Applied ON TOP of the splayed rest pose, not instead of it —
 		# overwriting the rotation would straighten the leg out of its
 		# spider shape the moment it started walking.
-		upper.rotation.x = swing * STEP_REACH
-		lower.rotation.x = -lift * STEP_LIFT * 4.0
+		# Floppiness rides ON TOP of the gait (STO-ENEMIES-037), the
+		# same way the gait rides on top of the splayed rest pose.
+		# A limp limb stops driving and hangs instead: the gait fades
+		# out and a droop fades in, so the leg goes dead rather than
+		# freezing mid-stride.
+		var limp01: float = clampf(_limp / LIMP_TIME, 0.0, 1.0)
+		var live: float = 1.0 - limp01
+		var leg_side: float = float(leg["side"])
+		upper.rotation.x = swing * STEP_REACH * live \
+				+ _flop.y * FLOP_NEAR + limp01 * LIMP_DROOP * 0.35
+		upper.rotation.z = float(leg["rest_z_upper"]) \
+				+ _flop.x * FLOP_NEAR * leg_side
+		lower.rotation.x = -lift * STEP_LIFT * 4.0 * live \
+				+ _flop.y * FLOP_FAR + limp01 * LIMP_DROOP
+		lower.rotation.z = float(leg["rest_z_lower"]) \
+				+ _flop.x * FLOP_FAR * leg_side
+
+
+## The lag is worked out on the PHYSICS tick, not the render frame.
+##
+## Position only changes when physics runs. Sampled from _process, a
+## render frame with no physics tick in it sees the creature as
+## perfectly stationary and the next one sees it jump — so the velocity
+## alternated between zero and a lurch, and the acceleration derived
+## from it was enormous noise. A spider standing perfectly still measured 0.0325
+## rad of lag it had no business having.
+##
+## Applied in _process, where the gait is drawn; only the measurement
+## belongs here.
+func _physics_process(delta: float) -> void:
+	if _legs.is_empty():
+		return
+	_update_flop(delta)
+
+
+## Work out how far the limbs should be trailing, and let a spring
+## chase it (STO-ENEMIES-037).
+##
+## Driven by the creature's own ACCELERATION, measured from where it
+## actually is rather than from anything it reports. Constant speed in a
+## straight line is not something limbs lag behind — starting, stopping
+## and turning are, and those are precisely what acceleration is. A
+## spider standing still therefore has still legs, with no special case
+## to say so.
+func _update_flop(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	if _limp > 0.0:
+		_limp -= delta
+
+	# Velocity comes from the creature itself where it can, NOT from
+	# differencing its position. Position differencing needs TWO
+	# derivatives to reach acceleration, and each one multiplies the
+	# noise by 1/delta: at 60 Hz a single millimetre of physics jitter
+	# comes out as 3.6 m/s^2, which drove a spider standing perfectly
+	# still to 0.07 rad of lag it had no business having.
+	var vel := Vector3.ZERO
+	var parent := get_parent()
+	if parent is CharacterBody3D:
+		vel = (parent as CharacterBody3D).velocity
+	else:
+		var here := global_position
+		if _prev_pos == Vector3.INF:
+			_prev_pos = here
+		vel = (here - _prev_pos) / delta
+		_prev_pos = here
+
+	# Lag is driven by how far the current velocity has run ahead of a
+	# SMOOTHED one — which is what starting, stopping and turning all
+	# look like, and what steady travel does not. One derivative rather
+	# than two, and bounded by real speed, so a stationary creature is
+	# exactly zero rather than nearly zero.
+	_vel_smooth = _vel_smooth.lerp(vel, clampf(FLOP_SMOOTH * delta, 0.0, 1.0))
+	var change: Vector3 = vel - _vel_smooth
+	change.y = 0.0
+
+	# Into the creature's own frame, so "trailing behind" means behind
+	# THIS spider rather than behind the world's -Z.
+	var local_change: Vector3 = global_transform.basis.inverse() * change
+	# Limbs lag OPPOSITE the change: shove the body forward and the legs
+	# are left behind it.
+	var target := Vector2(-local_change.x, -local_change.z) * FLOP_DRIVE
+	target = target.limit_length(FLOP_MAX)
+
+	var a: Vector2 = (target - _flop) * FLOP_STIFF - _flop_v * FLOP_DAMP
+	_flop_v += a * delta
+	_flop += _flop_v * delta
+	_flop = _flop.limit_length(FLOP_MAX)
+
+	if _pincers != null and _pincers.has_method("set_flop"):
+		_pincers.call("set_flop", _flop)
+
+
+## Knock the life out of the limbs for a moment (STO-ENEMIES-037).
+##
+## They stop driving and hang. It reads as damage only because the
+## limbs are already swinging loosely the rest of the time — a limb
+## that stops moving stands out precisely because the others do not.
+func go_limp(seconds := LIMP_TIME) -> void:
+	_limp = maxf(_limp, seconds)
+	if _pincers != null and _pincers.has_method("go_limp"):
+		_pincers.call("go_limp", seconds)
+
+
+## How limp the limbs are right now, 0 (working) to 1 (dangling).
+func limpness() -> float:
+	return clampf(_limp / LIMP_TIME, 0.0, 1.0)
+
+
+## How far the limbs are currently trailing, for tests.
+func flop() -> Vector2:
+	return _flop
 
 
 ## Three repeatable "random" numbers in 0-1 for one leg's one step.

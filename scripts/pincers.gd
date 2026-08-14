@@ -67,6 +67,19 @@ var _phase := 0.0
 var _jaw := 0.3          # 0 = shut, 1 = wide open
 var _jaw_target := 0.3
 var _reach_out := 0.0    # 0 = drawn back, 1 = stretched forward
+# Floppiness (STO-ENEMIES-037). Handed down by the body rather than
+# worked out again here: the arms and the legs hang off the same block
+# and are dragged around by the same movement, so computing it twice
+# would let them disagree about which way the creature just lurched.
+var _flop := Vector2.ZERO
+var _limp := 0.0
+
+## How much the arms trail. HEAVIER than the legs — these are the thick
+## limbs, and the legs at least have the ground to brace against.
+const ARM_FLOP_NEAR := 0.7
+const ARM_FLOP_FAR := 1.6
+const ARM_LIMP_DROOP := 1.2
+const ARM_LIMP_TIME := 0.7
 
 
 ## Build both arms onto a body of `body_size`, whose block rides at
@@ -173,6 +186,8 @@ func _process(delta: float) -> void:
 	if _arms.is_empty():
 		return
 	_phase += delta * WEAVE_RATE
+	if _limp > 0.0:
+		_limp -= delta
 
 	# Idle jaw work: they never sit still and never shut completely.
 	if _jaw_target < 0.0:
@@ -196,18 +211,30 @@ func _process(delta: float) -> void:
 		# overwriting rotation here would straighten the arms out of
 		# their shape the instant they moved, which is the mistake the
 		# legs already document.
-		upper.rotation.y = side * REST_YAW[0] + sway * WEAVE_YAW
-		upper.rotation.x = REST_PITCH[0] + rise * WEAVE_PITCH
+		# Limp arms stop weaving and hang (STO-ENEMIES-037). The weave
+		# fades out and a droop fades in, so a hit reads as the arm
+		# going dead rather than as the animation stopping.
+		var limp01: float = clampf(_limp / ARM_LIMP_TIME, 0.0, 1.0)
+		var live: float = 1.0 - limp01
+
+		upper.rotation.y = side * REST_YAW[0] + sway * WEAVE_YAW * live \
+				+ _flop.x * ARM_FLOP_NEAR
+		upper.rotation.x = REST_PITCH[0] + rise * WEAVE_PITCH * live \
+				+ _flop.y * ARM_FLOP_NEAR + limp01 * ARM_LIMP_DROOP * 0.4
 		# Reaching straightens the arm out and forward.
 		fore.rotation.y = side * REST_YAW[1] * (1.0 - _reach_out * 0.8) \
-				- sway * WEAVE_YAW * 0.5
+				- sway * WEAVE_YAW * 0.5 * live + _flop.x * ARM_FLOP_FAR
 		fore.rotation.x = REST_PITCH[1] * (1.0 - _reach_out * 0.8) \
-				+ rise * WEAVE_PITCH * 0.5
+				+ rise * WEAVE_PITCH * 0.5 * live \
+				+ _flop.y * ARM_FLOP_FAR + limp01 * ARM_LIMP_DROOP
 
 		var jaws: Array = arm["jaws"]
 		for j in jaws.size():
 			var jaw := jaws[j] as Node3D
-			jaw.rotation.x = (1.0 if j == 0 else -1.0) * JAW_OPEN * _jaw
+			# A limp pincer falls open. It cannot hold anything, and it
+			# should be visible from across the room that it cannot.
+			var open: float = lerpf(_jaw, 0.75, limp01)
+			jaw.rotation.x = (1.0 if j == 0 else -1.0) * JAW_OPEN * open
 
 
 # --- What the rest of the game asks of them --------------------------
@@ -243,3 +270,18 @@ func set_reach(out01: float) -> void:
 
 func arm_count() -> int:
 	return _arms.size()
+
+
+## How far the arms should be trailing, handed down by the body that
+## drags them around (STO-ENEMIES-037).
+func set_flop(lag: Vector2) -> void:
+	_flop = lag
+
+
+## Knock the life out of the arms for a moment.
+func go_limp(seconds := ARM_LIMP_TIME) -> void:
+	_limp = maxf(_limp, seconds)
+
+
+func limpness() -> float:
+	return clampf(_limp / ARM_LIMP_TIME, 0.0, 1.0)

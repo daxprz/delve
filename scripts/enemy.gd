@@ -707,6 +707,12 @@ func apply_knockback(impulse: Vector3, hit_point := Vector3.INF) -> void:
 			# which tick in _process vs _physics_process, can't race).
 			_body.call("buckle_leg", _stumble_leg, STUMBLE_TIME * 0.8,
 					clampf(dv.length() / (KNOCKDOWN_DV * _stability), 0.4, 1.0))
+		# A four-legged body has no single leg to buckle, so the hit
+		# knocks the life out of ALL its limbs for a moment instead
+		# (STO-ENEMIES-037). Same has_method guard and the same reason:
+		# only the spider has floppy limbs to go limp.
+		elif _body != null and _body.has_method("go_limp"):
+			_body.call("go_limp", STUMBLE_TIME * 0.8)
 		DebugOverlay.log("enemy/combat", self,
 				"%s: stumbles, %s leg buckles (dv=%.1f)",
 				[name, "R" if _stumble_leg == 1 else "L", dv.length()])
