@@ -80,12 +80,42 @@ func _check_reeled() -> void:
 	var sp: Vector3 = _arms.shoulder_point(0)
 	var after := sp.distance_to(_box.global_position)
 	# THE ONE CONSTANT (003 -> 053 -> 055): never dragged into you.
-	if after > 1.0:
+	#
+	# Checked as TWO things, because the old single check was measuring
+	# the wrong quantity. The crate is steered toward a point 2.4 m out
+	# (HOLD_DIST) while the arm can only reach about 2.0, so where it
+	# actually settles is an EQUILIBRIUM between the pull and the arm —
+	# and that equilibrium moves when unrelated things change in the
+	# world. Measured while adding the practice dummy (STO-ENEMIES-029),
+	# a body 12 m away that never touches the crate:
+	#
+	#   no dummy .................................. 1.66 m
+	#   dummy present, no collider ................ 1.66 m
+	#   dummy solid, outside the players group .... 1.51 m
+	#   dummy solid, inside the players group ..... 1.00 m
+	#
+	# Distance to the dummy made no difference at all, so this is
+	# physics ordering, not a pull. The old threshold of 1.0 m sat
+	# inside that band, which made an unrelated addition to the world
+	# look like the return of a bug fixed three times.
+	#
+	# So: assert the thing that actually distinguishes the bug. When it
+	# WAS broken the crate ended up AT the shoulder — about zero, and
+	# behind the hands. Distance now only has to rule that out; the
+	# real check is that the crate is still out FRONT.
+	var fwd: Vector3 = -_player.global_transform.basis.z
+	var to_box: Vector3 = _box.global_position - sp
+	var in_front: float = to_box.normalized().dot(fwd.normalized())
+	if after > 0.6:
 		_pass("the held crate is kept away from the player (%.2f m from the shoulder)"
 				% after)
 	else:
 		_fail("the crate was dragged into the player (%.2f -> %.2f m)"
 				% [_dist_before, after])
+	if in_front > 0.35:
+		_pass("and held out in FRONT of the player (facing %.2f)" % in_front)
+	else:
+		_fail("the crate is not out in front any more (facing %.2f)" % in_front)
 	# It is HELD, so it must not simply drop to the floor either.
 	if _box.global_position.y > 0.6:
 		_pass("it is held up rather than dropped (y %.2f)" % _box.global_position.y)

@@ -253,12 +253,19 @@ func _physics_process(_d: float) -> bool:
 			# Standing still, the legs stop. A creature jogging on the
 			# spot looks broken.
 			if _ticks == 1:
-				# Take the player away so it genuinely stops. Calling
+				# Take EVERY target away so it genuinely stops. Calling
 				# set_speed(0) alone does nothing — the enemy overwrites
 				# it with its REAL velocity every tick, which is the
 				# point of driving the gait from actual movement.
-				for c in _main.get_node("Players").get_children():
-					c.queue_free()
+				#
+				# By group, not by emptying Players/. The practice dummy
+				# (STO-ENEMIES-029) is a legitimate target that lives in
+				# Dummies/, so clearing one container left something for
+				# the spider to walk toward and it never stood still.
+				# `self` IS the SceneTree here (this script extends it),
+				# so the group is asked for directly.
+				for c in get_nodes_in_group("players"):
+					(c as Node).queue_free()
 				return false
 			if _ticks == 40:
 				_feet_a = _body.call("foot_positions")

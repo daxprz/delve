@@ -8,6 +8,7 @@ const PLAYER_SCENE := preload("res://scenes/player.tscn")
 const PlaygroundScript := preload("res://scripts/playground.gd")
 const ProcMapScript := preload("res://scripts/procmap.gd")
 const EnemyScript := preload("res://scripts/enemy.gd")
+const DummyScript := preload("res://scripts/dummy.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const MirrorScript := preload("res://scripts/mirror.gd")
 const CharacterDB := preload("res://scripts/characters.gd")
@@ -21,6 +22,13 @@ const ENEMY_SPAWNS: Array = [
 	# ONE giant spider (STO-ENEMIES-021). It is not a creature you
 	# meet in pairs.
 	{"at": Vector3(6.0, 1.0, -10.0), "kind": 1},
+]
+
+## Practice dummies (STO-ENEMIES-029) — a stand-in teammate so the
+## rescue stories can be tried by one person. Left of spawn, clear of
+## both the enemy spawns and the mirror.
+const DUMMY_SPAWNS: Array = [
+	Vector3(-3.0, 1.0, -4.0),
 ]
 
 ## Players arrive spread around a ring rather than stacked on one
@@ -81,6 +89,14 @@ func _ready() -> void:
 
 	# Spawn the follower enemies (EPI-ENEMIES-BASIC-ENEMY).
 	_spawn_enemies()
+
+	# A practice dummy (STO-ENEMIES-029) so teamwork can be tried with
+	# one person at the keyboard. Deliberately NOT inside Players/: that
+	# node is driven by a MultiplayerSpawner whose spawn list is real
+	# player scenes, and an unlisted child there is rejected outright.
+	# The dummy needs no replication anyway — it never moves, so every
+	# peer building it in the same place already agrees.
+	_spawn_dummies()
 
 	# A mirror near spawn so you can see your character (STO-CHARACTER-013).
 	var mirror: Node3D = MirrorScript.new()
@@ -152,6 +168,22 @@ func _spawn_enemies() -> void:
 		enemy.set("kind", int(spawn["kind"]))
 		enemy.position = spawn["at"]
 		container.add_child(enemy, true)
+
+
+## Stand the practice dummies up (STO-ENEMIES-029).
+##
+## Placed near spawn and well clear of the enemy spawn points, so it is
+## the first thing you can walk up to and hit — and so the enemies do
+## not immediately mob it before you have found it.
+func _spawn_dummies() -> void:
+	var container := Node3D.new()
+	container.name = "Dummies"
+	add_child(container)
+	for i in DUMMY_SPAWNS.size():
+		var dummy: CharacterBody3D = DummyScript.new()
+		dummy.name = "Dummy%d" % i
+		container.add_child(dummy)
+		dummy.global_position = DUMMY_SPAWNS[i]
 
 
 ## A "UI size: [-] 2x [+]" row (STO-UI-003). Added to both the main
