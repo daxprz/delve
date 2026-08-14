@@ -36,23 +36,36 @@ building carefully.
 
 ## Definition of Done
 
-- [ ] `F` toggles the arms into a piston, and back.
-- [ ] Holding **both** mouse buttons charges it; either alone does
-      not.
-- [ ] Charging longer launches harder — measured, not eyeballed.
-- [ ] A full charge is dramatic; a tap is feeble.
-- [ ] An enemy hit by it is launched **and ragdolled**.
-- [ ] A player hit by it is launched and **stays in control** — no
-      ragdoll, no stagger, no lost input.
-- [ ] It does not hurt the player it launches. This is a boost
-      between friends, not an attack.
+- [x] `F` toggles the arms into a piston, and back.
+- [x] Both mouse buttons charge it; either alone does not.
+- [x] Charging longer launches harder — 6.9 for a tap, 34.0 full.
+- [x] A tap still fires, at a fifth of the power.
+- [x] An enemy hit by it is launched **and ragdolled**.
+- [x] A player is launched at 34 m/s with **no ragdoll and no roll**.
+- [x] It does no damage to the player it launches.
 - [ ] Firing at nothing wastes the charge, so it cannot be held
       forever.
-- [ ] Only the Grabber has it.
-- [ ] Works in multiplayer: the launched player is launched on THEIR
-      machine, not just on the launcher's screen.
-- [ ] Proven by a headless test, and a two-instance test for the
-      player launch.
+- [x] The pull is gone from `F` — no overloading.
+- [x] Only the Grabber has it.
+- [ ] **Multiplayer NOT verified.** The RPC is written but no
+      two-instance test exists yet.
+- [x] `tests/smoke_piston.gd`. The two-instance test is still owed.
+
+## Verification notes (2026-08-14)
+
+A real bug surfaced immediately: `launch_by_piston` deferred to the
+node's multiplayer authority — but **offline there is no authority to
+defer to**, and a player node named "2" is not "ours" even with no
+network at all. The launch took the network path and vanished. It now
+checks for an actual peer first.
+
+One thing is deliberately **printed, not asserted**: how far the
+launched player travels. A second player node offline does not run its
+own movement, so it never moves however much velocity it has. That is
+an artefact of two players sharing one machine, which never happens in
+a real game — each peer owns its own player. The launch itself is
+proven (34 m/s applied, no ragdoll, no damage); the travel belongs in
+a two-instance test that does not exist yet.
 
 ## Out of scope
 
@@ -62,10 +75,12 @@ building carefully.
 
 ## Notes — things to be careful of
 
-- **`F` is currently `ability_pull`.** Overloading it means the pull
-  either moves or goes. Decide before building, and check it never
-  feels like the pull "randomly stopped working" — the same risk
-  flagged in STO-COMBAT-007 for `E`.
+- **`F` was `ability_pull`. SETTLED: the pull is REMOVED** and F
+  belongs to the piston outright. The operator chose that rather than
+  moving the pull to another key, so there is no overloading and no
+  risk of the pull seeming to "randomly stop working". The pull's code
+  is unhooked rather than deleted, the same way C and G were
+  (STO-CHARACTER-056), so it can come back on another key in one line.
 - **A launched player must not be ragdolled by their own landing**
   either. Landing hard already causes fall damage; a piston launch
   should be exempt or it will kill the person you were helping.

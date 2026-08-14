@@ -25,7 +25,7 @@ static var LIST := [
 		"speed": 5.0, "sprint": 5.0, "jump": 4.5, "health": 140.0,
 		"arms": true, "double_jump": false, "wall_jump": false,
 		"wall_climb": false, "tail": false, "humanoid": true,
-		"abilities": ["zip", "throw", "pull", "block"],
+		"abilities": ["zip", "throw", "piston", "block"],
 	},
 	{
 		"id": "runner", "name": "Runner",

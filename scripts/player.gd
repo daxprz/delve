@@ -148,6 +148,25 @@ var _wall_lock := 0.0
 const PUSH_LOCK := 0.16
 var _push_lock := 0.0
 var _pre_move_velocity := Vector3.ZERO
+# --- Grabber piston (STO-CHARACTER-067) ------------------------------
+## F locks the two arms into one piston. Hold BOTH mouse buttons to
+## charge; the longer you hold, the harder it fires.
+##
+## What it hits decides what happens: an enemy is launched AND
+## ragdolled, a PLAYER is launched and keeps full control. That second
+## case is the point — a Runner fired across the map arrives at speed,
+## and its claw damage is 100% momentum (STO-CHARACTER-066), so a
+## piston-launched Runner lands the hardest scratch in the game.
+const PISTON_MAX_CHARGE := 1.6      # seconds to a full-power shot
+const PISTON_MIN_LAUNCH := 6.0      # a tap still does something
+const PISTON_MAX_LAUNCH := 34.0     # a full charge is dramatic
+const PISTON_RANGE := 4.5
+const PISTON_LIFT := 0.35           # how much of the launch goes upward
+var _piston_mode := false
+var _piston_charge := 0.0
+var _piston_fired := 0
+var _piston_launched := false
+
 # --- Runner claws (STO-CHARACTER-066) --------------------------------
 ## Scratch damage comes ENTIRELY from momentum (STO-CHARACTER-066):
 ## how fast the Runner is actually travelling when the claw lands.
@@ -542,6 +561,98 @@ func is_dashing() -> bool:
 
 func dash_count() -> int:
 	return _dashes
+
+
+## Lock the arms together, or unlock them (STO-CHARACTER-067).
+func toggle_piston() -> bool:
+	_piston_mode = not _piston_mode
+	_piston_charge = 0.0
+	DebugOverlay.log("player/abilities", self, "%s: piston %s",
+			[name, "ON" if _piston_mode else "off"])
+	return _piston_mode
+
+
+func is_piston_mode() -> bool:
+	return _piston_mode
+
+
+func piston_charge() -> float:
+	return _piston_charge
+
+
+func piston_shots() -> int:
+	return _piston_fired
+
+
+## Charge while BOTH buttons are held; fire the moment either lets go.
+func _update_piston(delta: float) -> void:
+	var both := Input.is_action_pressed("scratch_left") \
+			and Input.is_action_pressed("scratch_right")
+	if both:
+		_piston_charge = minf(_piston_charge + delta, PISTON_MAX_CHARGE)
+	elif _piston_charge > 0.0:
+		fire_piston()
+
+
+## Fire whatever is charged. Returns the launch speed used.
+func fire_piston() -> float:
+	var t := clampf(_piston_charge / PISTON_MAX_CHARGE, 0.0, 1.0)
+	_piston_charge = 0.0
+	if not _piston_mode:
+		return 0.0
+	var power := lerpf(PISTON_MIN_LAUNCH, PISTON_MAX_LAUNCH, t)
+	_piston_fired += 1
+	var dir := _aim_forward() + Vector3.UP * PISTON_LIFT
+	dir = dir.normalized()
+
+	# A PLAYER is launched and keeps control — no ragdoll, no stagger,
+	# no damage. This is a boost between friends, not an attack.
+	for other in get_tree().get_nodes_in_group("players"):
+		var pl := other as CharacterBody3D
+		if pl == null or pl == self:
+			continue
+		if global_position.distance_to(pl.global_position) > PISTON_RANGE:
+			continue
+		if pl.has_method("launch_by_piston"):
+			pl.call("launch_by_piston", dir * power)
+		DebugOverlay.log("player/abilities", self,
+				"%s: piston LAUNCHED %s at %.1f", [name, pl.name, power])
+
+	# An ENEMY is launched AND ragdolled.
+	var enemy := _nearest_enemy(PISTON_RANGE)
+	if enemy != null and enemy.has_method("apply_knockback"):
+		enemy.call("apply_knockback", dir * power * 3.0)
+		DebugOverlay.log("player/abilities", self,
+				"%s: piston blasted %s at %.1f", [name, enemy.name, power])
+	return power
+
+
+## Launched by a friend's piston (STO-CHARACTER-067). Full control is
+## KEPT: no ragdoll, no stagger, no damage. Only the velocity changes.
+func launch_by_piston(impulse: Vector3) -> void:
+	# Offline there is no authority to defer to: every player node is
+	# ours. Without this check the launch took the network path and
+	# vanished into nothing, because a player named "2" is not "our"
+	# authority even when there is no network at all.
+	var networked: bool = multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer is not OfflineMultiplayerPeer
+	if networked and not is_multiplayer_authority():
+		_remote_piston_launch.rpc_id(get_multiplayer_authority(), impulse)
+		return
+	velocity = impulse
+	# Borrow the wall-jump lock so walk input cannot instantly damp the
+	# launch away — the same problem the grapple had.
+	_wall_lock = WALL_JUMP_LOCK
+	_piston_launched = true
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _remote_piston_launch(impulse: Vector3) -> void:
+	launch_by_piston(impulse)
+
+
+func was_piston_launched() -> bool:
+	return _piston_launched
 
 
 func is_blocking() -> bool:
@@ -1118,8 +1229,14 @@ func _update_abilities() -> void:
 			do_scratch(0)
 		if Input.is_action_just_pressed("scratch_right"):
 			do_scratch(1)
-	if _has_ability("pull") and Input.is_action_just_pressed("ability_pull"):
-		do_pull()
+	# F is the PISTON now (STO-CHARACTER-067). The pull is removed
+	# outright rather than moved, so F belongs to one thing and cannot
+	# feel like the pull "randomly stopped working". do_pull() is
+	# unhooked, not deleted — rebinding it is one line, same as C and G.
+	if _has_ability("piston") and Input.is_action_just_pressed("ability_pull"):
+		toggle_piston()
+	if _piston_mode:
+		_update_piston(get_physics_process_delta_time())
 	# Keep a held object floating in front of the Grabber.
 	if _held != null:
 		if is_instance_valid(_held):
