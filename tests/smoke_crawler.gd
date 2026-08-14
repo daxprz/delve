@@ -113,13 +113,18 @@ func _physics_process(_d: float) -> bool:
 			_check(outside == 4,
 					"all 4 feet land OUTSIDE the body's width (%d of 4, half-width %.2f)"
 					% [outside, half_w])
-			var above := 0
+			# NB: no longer "knees above the body". STO-ENEMIES-022 made
+			# the upper two joints SMALL and the last one long, so the
+			# knee now sits near the body rather than towering over it —
+			# the shape changed by request. What still has to hold is
+			# the down-up-down profile, checked above, and that the
+			# knees are OUT to the side rather than tucked under.
+			var out_wide := 0
 			for k in knees:
-				if (k as Vector3).y > bh:
-					above += 1
-			_check(above == 4,
-					"all 4 knees rise ABOVE the body (%d of 4, body at %.2f)"
-					% [above, bh])
+				if absf((k as Vector3).x) > half_w:
+					out_wide += 1
+			_check(out_wide == 4,
+					"all 4 knees sit OUT beyond the body (%d of 4)" % out_wide)
 			# --- GIANT (STO-ENEMIES-021) ---------------------------
 			# Three segments: DOWN off the body, UP to the knee, DOWN
 			# to the floor. Two could only manage out-up-down.
@@ -132,6 +137,13 @@ func _physics_process(_d: float) -> bool:
 					ys.append(_body.to_local(node2.global_position).y)
 			_check(ys.size() == 3,
 					"each leg has 3 segments (%d)" % ys.size())
+			# The LAST segment must be far the longest (STO-ENEMIES-022).
+			var segs: Array = _body.call("segment_lengths")
+			_check(segs.size() == 3, "3 segment lengths")
+			if segs.size() == 3:
+				_check(float(segs[2]) > float(segs[0]) + float(segs[1]),
+						"the last segment is longer than the other two together (%.2f vs %.2f + %.2f)"
+						% [float(segs[2]), float(segs[0]), float(segs[1])])
 			if ys.size() == 3:
 				var bh0: float = _body.call("body_height")
 				_check(float(ys[1]) < bh0,
