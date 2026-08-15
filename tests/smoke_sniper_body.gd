@@ -30,11 +30,15 @@ func _physics_process(_d: float) -> bool:
 			var ids: Array = []
 			for i in _db.count():
 				ids.append(_db.get_def(i)["id"])
-			for want in ["grabber", "runner", "flyer", "sniper"]:
+			for want in ["grabber", "runner", "flyer", "sniper", "mage"]:
 				_check(ids.has(want), "roster has '%s'" % want)
 			for gone in ["guardian", "builder"]:
 				_check(not ids.has(gone), "'%s' is gone from the roster" % gone)
-			_check(_db.count() == 4, "roster is 4 characters (%d)" % _db.count())
+			# The Mage joined on 2026-08-14 (EPI-CHARACTER-MAGE-FLATLANDER).
+			# The count is asserted rather than left open because the two
+			# removed characters above were removed on purpose, and a
+			# roster that silently regrows is worth catching.
+			_check(_db.count() == 5, "roster is 5 characters (%d)" % _db.count())
 
 			_sniper = _spawn("sniper", 0.0)
 			_runner = _spawn("runner", 4.0)
