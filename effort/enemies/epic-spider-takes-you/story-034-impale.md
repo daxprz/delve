@@ -14,9 +14,23 @@ bd-id: delve-gwv3
 
 ## Summary
 
-The spider catches you in its pincers, carries you off, and puts you on
+The spider catches you in its pincers, hauls you off, and puts you on
 something sharp. You do not die. You are **stuck there, alive**, and it
 walks away.
+
+## How you are carried (operator, 2026-08-14)
+
+**DRAGGED ALONG THE GROUND.** Not snatched off your feet, not lifted
+into the air, not dangling.
+
+It catches you and hauls you behind it. You **stay on the floor**, and
+you can **still see and still struggle** the whole way.
+
+That choice was made against two alternatives — being lifted into the
+air (more frightening) and being able to break free by struggling
+(more fair). Dragging keeps you conscious and watching, which is what
+the rest of this story depends on: you have to be able to see where you
+are being taken, and see whether anyone is coming for you.
 
 ## What you can still do while impaled (operator, 2026-08-14)
 
@@ -42,7 +56,9 @@ where it hurts.
 ## Definition of Done
 
 - [ ] The spider's pincers can catch a player (or the dummy).
-- [ ] It carries them — they move with it, they do not walk.
+- [ ] It **drags them along the ground** behind it — not lifted, not
+      dangling. They stay on the floor.
+- [ ] They can see and turn the whole way there.
 - [ ] It finds a spike and leaves them on it.
 - [ ] Impaled, you can still turn and look.
 - [ ] Mashing Space takes 0.01 off the return timer per press.
@@ -53,6 +69,7 @@ where it hurts.
 
 ## Out of scope
 
-- Being carried to a nest or a web. The nearest spike will do.
+- Being dragged to a nest or a web. The nearest spike will do.
+- Being lifted into the air. Explicitly rejected — see above.
 - The rescue itself — that is STO-ENEMIES-035.
 - Being eaten — that is STO-ENEMIES-036.
