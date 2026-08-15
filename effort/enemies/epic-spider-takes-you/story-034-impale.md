@@ -61,9 +61,9 @@ This is the important part, and it was decided precisely:
 - **You can look around.** You are not frozen. You watch it leave and
   you watch your friends arrive.
 - **You can struggle** by mashing **Space**. Every mash takes **0.01**
-  off the timer. ⚠️ *Which timer is not settled — see
-  STO-ENEMIES-050, which says struggling makes you bleed faster. Do not
-  build either until the operator confirms.*
+  off **your own life** — settled by the operator on 2026-08-14.
+  Struggling never helps you and never buys time; it bleeds you out
+  faster, exactly like fighting does (STO-ENEMIES-050).
 - **You can fight back** — but **sometimes your attacks do nothing.**
   You are pinned and flailing, not fighting properly.
 - **Movement attacks do nothing at all.** The Runner's dash, the pounce,

@@ -60,22 +60,21 @@ attacks land, some do nothing (STO-ENEMIES-034), and every attempt
 speeds up the clock. That is a much better rule than taking the button
 away, because it is *your* choice to spend life on it.
 
-## ⚠️ One thing that needs settling
+## SETTLED: which timer (operator, 2026-08-14)
 
-STO-ENEMIES-034 already says mashing **Space** takes **0.01 off the
-timer**, decided on 2026-08-14. This story says struggling makes you
-bleed **faster**.
+STO-ENEMIES-034 says mashing **Space** takes **0.01 off the timer**. It
+was not written down *which* timer, and this story said struggling makes
+you bleed faster — so it mattered.
 
-These two agree only if "0.01 off the timer" means **off your own life**
-— you are shortening your own clock by thrashing. Read that way, both
-rules say the same thing and the design is clean.
+**It is 0.01 off YOUR OWN LIFE.** Confirmed by the operator. Every mash
+shortens your own clock. Struggling is never a reward and never buys you
+anything; it is one more way of bleeding out.
 
-They disagree if it meant 0.01 off the *spider's return* timer as a
-reward for struggling.
+That collapses two rules into one, which is why it is the right answer:
 
-**Nothing gets built here until the operator says which.** Written down
-rather than guessed, because a guess here would quietly invert the whole
-point of the story.
+> **Struggling, fighting and thrashing all bleed you out faster. There
+> is no exception. The only thing that buys time is the timing game, and
+> the only thing that frees you is somebody else.**
 
 ## Definition of Done
 

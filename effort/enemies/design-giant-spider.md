@@ -197,16 +197,22 @@ Described in full for the first time on this date:
 5. You **bleed on a clock**. A **timing game** slows the bleeding down;
    you play it to stretch out how long you last.
 
-**The rule underneath it:** everything you do to save yourself kills you
-faster. Fighting and struggling both make you bleed quicker. Only
-staying calm buys time, and only someone else can actually free you.
+**The rule underneath it, and the best idea in this epic:** everything
+you do to save yourself kills you faster. Struggling, fighting,
+thrashing — all of it bleeds you out quicker, with no exception. Only
+staying calm and playing the timing game buys you a moment, and only
+someone else can actually free you.
+
+It means the panicky, natural thing to do is the wrong thing, and the
+player who lasts longest is the one who stops struggling and
+concentrates.
 
 **What you can still do while impaled:**
 
 - **You can look around.** Not frozen. You watch it leave and you watch
   your friends arrive.
 - **You can struggle** by mashing **Space** — each mash takes **0.01**
-  off the timer. ⚠️ *Which timer is unsettled; see STO-ENEMIES-050.*
+  off **your own life**. It never helps you.
 - **You can fight back, but sometimes your attacks do nothing.** You are
   pinned and flailing, not fighting properly. **Every attempt makes you
   bleed faster.**
