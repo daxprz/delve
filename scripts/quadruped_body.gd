@@ -645,6 +645,12 @@ func limb_segments() -> Array:
 				"name": "%s/%s" % [String((leg["root"] as Node3D).name),
 						String(names[i])],
 			})
+	# The arms are limbs too (STO-ENEMIES-058). Appended at the END so
+	# the order stays stable: the bone builder pairs its bones with this
+	# list by index, and inserting anything in the middle would silently
+	# drive every bone toward the wrong segment.
+	if _pincers != null and _pincers.has_method("limb_segments"):
+		out.append_array(_pincers.call("limb_segments"))
 	return out
 
 

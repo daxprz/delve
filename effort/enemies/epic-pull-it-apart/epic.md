@@ -44,7 +44,7 @@ gameplay delve does not have anywhere else.
 
 | # | | |
 |---|---|---|
-| 058 | The arms are physics too | the legs already are (STO-ENEMIES-055); the pincers are not |
+| 058 | ✅ The arms are physics too | done — 12 bones became 16 |
 | 059 | Hitting a limb hurts it | smack an arm aside and it costs the creature something |
 | 060 | Limbs are attached, and come off | they hold on until pulled hard enough |
 | 061 | It takes two | one holds it down, one pulls — alone is not enough |
@@ -64,7 +64,7 @@ deliberate. It is how the game says what it is about.
 
 ## Definition of Done
 
-- [ ] The pincer arms collide with the world and with the player, like
+- [x] The pincer arms collide with the world and with the player, like
       the legs do.
 - [ ] Hitting a limb hurts the creature and shoves the limb aside.
 - [ ] Limbs stay attached until pulled hard enough.

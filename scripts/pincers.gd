@@ -392,6 +392,40 @@ func has_felt(who: Node) -> bool:
 	return false
 
 
+## Every arm segment, in WORLD space, in the same shape the legs use
+## (STO-ENEMIES-058) — {a, b, r, leg, name}.
+##
+## Exists so the arms can become real physics bones exactly the way the
+## legs already did (STO-ENEMIES-055), with no separate code path. The
+## bone builder reads this shape and knows nothing about what a leg or
+## an arm is, which is why adding the arms is a matter of listing them.
+##
+## `leg` is a GROUP id, used to decide which pairs may collide. Each arm
+## gets its own, well clear of the legs' pair numbers, so the two halves
+## of one arm never fight each other at the shoulder — the mistake that
+## threw the first skeleton 335 m across the map.
+func limb_segments() -> Array:
+	var out: Array = []
+	var r: float = _arm_th * 0.5
+	var names := ["Upper", "Fore"]
+	for i in _arms.size():
+		var arm: Dictionary = _arms[i]
+		var nodes := [arm["upper"], arm["fore"]]
+		for j in SEGMENT_FRACTIONS.size():
+			var node: Node3D = nodes[j]
+			if node == null:
+				continue
+			var seg_len: float = _arm_len * float(SEGMENT_FRACTIONS[j])
+			out.append({
+				"a": node.global_position,
+				"b": node.global_transform * Vector3(0.0, 0.0, -seg_len),
+				"r": r,
+				"leg": 100 + i,
+				"name": "Arm%d/%s" % [i, names[j]],
+			})
+	return out
+
+
 # --- What the rest of the game asks of them --------------------------
 
 ## How far the pincers reach from the body, tip included.
