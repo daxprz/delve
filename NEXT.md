@@ -19,6 +19,35 @@ Read that first next time. This file is only the state of play.
 
 ---
 
+## 🕷️ The spider can now TAKE you (2026-08-14)
+
+The whole sequence works, unprompted, end to end:
+
+> its arms **reach out** for you → it **catches** you → **smashes you
+> into the ground** → **drags you along the floor** while your screen
+> **dims** → leaves you on a **spike**, screen **red** → you **bleed**,
+> and play a **timing game** to last longer.
+
+| | measured |
+|---|---|
+| arms off-target, idling → reaching | **159.9° → 4.2°** |
+| how high you get while dragged | **0.35 m** — you stay on the floor |
+| how far you get dragged | **5.1 m** to the nearest spike |
+| left on the spike | **0.00 m** off centre, **1.87 m** up |
+| screen dim / red / cleared | 0.48 / 0.43 / 0.007 |
+| how long you last: calm / nothing / thrashing | **10.3 s / 4.0 s / 0.8 s** |
+
+**Still open in that story:** "sometimes your attacks do nothing" while
+pinned. Right now being pinned stops *everything*, which is close but
+not what you asked for.
+
+**Not built yet in this topic:** the pincers hitting hard on their own
+(031), reaching around cover (032), the **rescue** (035), and being
+**eaten** (036). The rescue is the big gap — right now nobody can get
+you off the spike, so being taken is always fatal.
+
+---
+
 ## 🎯 Start here next time
 
 **Build STO-ENEMIES-038 — the radar with memory.** It is the
@@ -62,6 +91,22 @@ Restart Play first — a running game keeps the old code.
 ---
 
 ## 🐛 Known bugs, found and not yet fixed
+
+- **`smoke_tail` fails, and it is not really about the spider.** The
+  Runner's tail can come to rest **draped across its own owner's hip**
+  instead of hanging, and it stays there indefinitely until the player
+  moves. Measured: tip resting at y=0.63 (droop 0.42) rather than
+  reaching the floor at y=0.06 (droop 0.99).
+
+  It is a **chaotic equilibrium**, not a broken feature — the tail has
+  two stable resting poses and something as small as adding one static
+  body anywhere in the world decides which one it falls into. Adding
+  the spikes flipped it. A plain box in the same place gave a *third*
+  answer (0.59). The tail itself was never touched.
+
+  Left failing on purpose. The honest fix is to stop the tail resting
+  on the body it hangs from, and that belongs to the Runner, not to
+  this epic.
 
 - **The spider camps on the dummy forever.** It is 0.9 m from it,
   beating it to 0 hp over and over while you stand across the map. The
