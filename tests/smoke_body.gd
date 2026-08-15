@@ -42,7 +42,11 @@ func _run() -> void:
 	if player == null:
 		_fail("no player")
 		return
-	var body := player.get_node_or_null("Body")
+	# Asked of the player, not found by path: the body hangs off a
+	# squash node now so the Mage can be flattened (STO-CHARACTER-079).
+	var body: Node = player.call("body_node") \
+			if player.has_method("body_node") \
+			else player.get_node_or_null("Body")
 	if body == null:
 		_fail("player has no Body")
 		return
@@ -58,7 +62,7 @@ func _run() -> void:
 		_fail("missing joints: %s" % str(missing))
 
 	# The forearm should be a descendant of the upper arm (real hierarchy).
-	var upper := body.find_child("UpperArmL", true, false)
+	var upper: Node = body.find_child("UpperArmL", true, false)
 	if upper != null and upper.find_child("ForearmL", true, false) != null:
 		_pass("joints are a real hierarchy (forearm under upper arm)")
 	else:

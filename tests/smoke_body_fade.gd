@@ -31,7 +31,13 @@ func _run() -> void:
 	if player == null:
 		_fail("no player")
 		return
-	var body := player.get_node_or_null("Body")
+	# Asked of the player, not found by path: a player's body hangs off a
+	# squash node now so the Mage can be flattened (STO-CHARACTER-079).
+	# Enemies still keep theirs as a direct child, so this helper is only
+	# needed where the subject is a PLAYER.
+	var body: Node = player.call("body_node") \
+			if player.has_method("body_node") \
+			else player.get_node_or_null("Body")
 	if body == null:
 		_fail("no body")
 		return

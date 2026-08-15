@@ -46,8 +46,8 @@ func _physics_process(_d: float) -> bool:
 		"check":
 			if _ticks < 60:
 				return false
-			var s_body: Node3D = _sniper.get_node("Body")
-			var r_body: Node3D = _runner.get_node("Body")
+			var s_body: Node3D = _sniper.call("body_node")
+			var r_body: Node3D = _runner.call("body_node")
 
 			# Ears — the Sniper's one body feature.
 			_check(s_body.get_node_or_null("Pelvis/Torso/Neck/Head/EarL") != null
