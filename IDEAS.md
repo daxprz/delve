@@ -1,5 +1,67 @@
 # 💡 Ideas
 
+# 🕷️ THE SPIDER — the part we're working on
+
+Everything about the spider fits into **nine topics**. Six of them
+already have work in them. **Three are completely empty** — and empty is
+where the interesting ideas go.
+
+Add lines under any of them. Messy is fine.
+
+| | Topic | What it covers | State |
+|---|---|---|---|
+| 1 | **Its body** | how it's built, size, legs, shape | ✅ built |
+| 2 | **How it moves** | walking, floppiness, climbing over things | ✅ built |
+| 3 | **Its arms** | the pincers, reaching, grabbing | ✅ half built |
+| 4 | **What it does to you** | catching, dragging, the spike, bleeding | 📝 all written, none built |
+| 5 | **Its mind** | finding you, remembering, learning, strategy | 📝 all written, none built |
+| 6 | **Being solid** | its legs hitting walls and each other | ❌ tried, failed |
+| 7 | **What it looks like** | colour, eyes, face, texture | 🈳 **EMPTY** |
+| 8 | **What it sounds like** | every noise it makes | 🈳 **EMPTY** |
+| 9 | **Fighting it** | can you hurt it? kill it? beat it? | 🈳 **EMPTY** |
+
+---
+
+### 1. 🦴 Its body
+
+-
+
+### 2. 🚶 How it moves
+
+-
+
+### 3. 🦞 Its arms
+
+-
+
+### 4. 😱 What it does to you
+
+-
+
+### 5. 🧠 Its mind
+
+-
+
+### 6. 🧱 Being solid
+
+-
+
+### 7. 👁️ What it looks like — *nothing written yet*
+
+-
+
+### 8. 🔊 What it sounds like — *nothing written yet*
+
+-
+
+### 9. ⚔️ Fighting it — *nothing written yet*
+
+-
+
+---
+
+# 💡 Everything else
+
 **This is your dumping ground.** Write ideas here however they come out
 — messy, half-finished, one word, whatever. Don't worry about spelling,
 don't worry about which topic, don't worry about whether it's possible.
