@@ -9,6 +9,7 @@ const PlaygroundScript := preload("res://scripts/playground.gd")
 const ProcMapScript := preload("res://scripts/procmap.gd")
 const EnemyScript := preload("res://scripts/enemy.gd")
 const DummyScript := preload("res://scripts/dummy.gd")
+const SpikeScript := preload("res://scripts/spike.gd")
 const ENEMY_SCENE := preload("res://scenes/enemy.tscn")
 const MirrorScript := preload("res://scripts/mirror.gd")
 const CharacterDB := preload("res://scripts/characters.gd")
@@ -29,6 +30,18 @@ const ENEMY_SPAWNS: Array = [
 ## both the enemy spawns and the mirror.
 const DUMMY_SPAWNS: Array = [
 	Vector3(-3.0, 1.0, -4.0),
+]
+
+## Sharp things for the spider to put you on (STO-ENEMIES-033).
+##
+## Placed FAR enough from spawn that being dragged to one takes long
+## enough to be frightening, and near enough that a friend can plausibly
+## reach you in time. Two of them, not one, so "the nearest spike" is a
+## real choice the spider makes rather than a lookup with one answer —
+## and so a bug in that choice is visible instead of hidden.
+const SPIKE_SPAWNS: Array = [
+	Vector3(10.0, 0.0, -6.0),
+	Vector3(-10.0, 0.0, 2.0),
 ]
 
 ## Players arrive spread around a ring rather than stacked on one
@@ -103,6 +116,9 @@ func _ready() -> void:
 	mirror.name = "Mirror"
 	mirror.position = Vector3(0.0, 0.0, -7.0)  # in front of the spawn (player faces -Z)
 	add_child(mirror)
+
+	# Sharp things for the spider to leave you on (STO-ENEMIES-033).
+	_spawn_spikes()
 
 	# Launch-arg affordance for automation and for shortcuts against a
 	# downloaded build:  --server  |  --client [address]
@@ -184,6 +200,23 @@ func _spawn_dummies() -> void:
 		dummy.name = "Dummy%d" % i
 		container.add_child(dummy)
 		dummy.global_position = DUMMY_SPAWNS[i]
+
+
+## Stand the spikes up (STO-ENEMIES-033).
+##
+## Like the dummies, deliberately not replicated: they never move, so
+## every peer building them from the same list already agrees about
+## where they are.
+func _spawn_spikes() -> void:
+	var container := Node3D.new()
+	container.name = "Spikes"
+	add_child(container)
+	for i in SPIKE_SPAWNS.size():
+		var spike: StaticBody3D = SpikeScript.new()
+		spike.name = "Spike%d" % i
+		container.add_child(spike)
+		spike.global_position = SPIKE_SPAWNS[i]
+	print("[SPIKES] %d sharp things placed" % SPIKE_SPAWNS.size())
 
 
 ## A "UI size: [-] 2x [+]" row (STO-UI-003). Added to both the main

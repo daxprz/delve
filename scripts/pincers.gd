@@ -67,12 +67,24 @@ var _phase := 0.0
 var _jaw := 0.3          # 0 = shut, 1 = wide open
 var _jaw_target := 0.3
 var _reach_out := 0.0    # 0 = drawn back, 1 = stretched forward
+var _reach_target := 0.0 # what _reach_out is easing toward
 # Floppiness (STO-ENEMIES-037). Handed down by the body rather than
 # worked out again here: the arms and the legs hang off the same block
 # and are dragged around by the same movement, so computing it twice
 # would let them disagree about which way the creature just lurched.
 var _flop := Vector2.ZERO
 var _limp := 0.0
+# Reaching for a player (STO-ENEMIES-048).
+var _aim := Vector3.ZERO
+var _aiming := false
+
+## How fast the arms swing onto a target. Deliberately unhurried: the
+## reach IS the warning, and a warning you cannot react to is not a
+## warning. It also keeps the arms looking heavy rather than servo-driven.
+const AIM_RATE := 3.2
+## How straight the arm goes when fully aimed. Not 1.0 — an arm folded
+## flat out is a stick, and these should still read as jointed.
+const AIM_STRAIGHTEN := 0.85
 
 ## How much the arms trail. HEAVIER than the legs — these are the thick
 ## limbs, and the legs at least have the ground to brace against.
@@ -188,6 +200,10 @@ func _process(delta: float) -> void:
 	_phase += delta * WEAVE_RATE
 	if _limp > 0.0:
 		_limp -= delta
+	# Ease onto the reach rather than snapping to it, so the arms unfold
+	# and settle. This is what makes the reach a warning you can see
+	# coming instead of a pose that is suddenly true (STO-ENEMIES-048).
+	_reach_out = move_toward(_reach_out, _reach_target, AIM_RATE * delta)
 
 	# Idle jaw work: they never sit still and never shut completely.
 	if _jaw_target < 0.0:
@@ -217,14 +233,34 @@ func _process(delta: float) -> void:
 		var limp01: float = clampf(_limp / ARM_LIMP_TIME, 0.0, 1.0)
 		var live: float = 1.0 - limp01
 
-		upper.rotation.y = side * REST_YAW[0] + sway * WEAVE_YAW * live \
-				+ _flop.x * ARM_FLOP_NEAR
-		upper.rotation.x = REST_PITCH[0] + rise * WEAVE_PITCH * live \
-				+ _flop.y * ARM_FLOP_NEAR + limp01 * ARM_LIMP_DROOP * 0.4
-		# Reaching straightens the arm out and forward.
-		fore.rotation.y = side * REST_YAW[1] * (1.0 - _reach_out * 0.8) \
+		# Where the arm sits when it is NOT reaching for anything: its
+		# built rest pose plus the idle weave.
+		var idle_yaw: float = side * REST_YAW[0] + sway * WEAVE_YAW * live
+		var idle_pitch: float = REST_PITCH[0] + rise * WEAVE_PITCH * live
+
+		# Reaching for a player (STO-ENEMIES-048). The arm is pointed at
+		# where they ACTUALLY are, worked out fresh every frame — there is
+		# no recorded reach animation, so a player standing behind or
+		# above the spider is reached for correctly with nothing authored
+		# for those cases.
+		var blend: float = _reach_out
+		if _aiming and blend > 0.0:
+			var want: Vector2 = _aim_pose(arm["root"] as Node3D)
+			idle_pitch = lerpf(idle_pitch, want.x, blend)
+			idle_yaw = lerpf(idle_yaw, want.y, blend)
+
+		# Flop is added ON TOP of the aim, never blended away: a reaching
+		# arm should still trail and settle, not snap onto you like a
+		# machine (STO-ENEMIES-039).
+		upper.rotation.y = idle_yaw + _flop.x * ARM_FLOP_NEAR
+		upper.rotation.x = idle_pitch + _flop.y * ARM_FLOP_NEAR \
+				+ limp01 * ARM_LIMP_DROOP * 0.4
+		# Reaching straightens the forearm out along the upper arm, so the
+		# whole limb lines up with wherever the shoulder is now pointing.
+		var straight: float = 1.0 - blend * AIM_STRAIGHTEN
+		fore.rotation.y = side * REST_YAW[1] * straight \
 				- sway * WEAVE_YAW * 0.5 * live + _flop.x * ARM_FLOP_FAR
-		fore.rotation.x = REST_PITCH[1] * (1.0 - _reach_out * 0.8) \
+		fore.rotation.x = REST_PITCH[1] * straight \
 				+ rise * WEAVE_PITCH * 0.5 * live \
 				+ _flop.y * ARM_FLOP_FAR + limp01 * ARM_LIMP_DROOP
 
@@ -263,9 +299,71 @@ func jaw() -> float:
 	return _jaw
 
 
-## Stretch the arms forward (1.0) or draw them back (0.0).
+## Stretch the arms forward (1.0) or draw them back (0.0). The arms ease
+## onto it over about a third of a second rather than jumping.
 func set_reach(out01: float) -> void:
-	_reach_out = clampf(out01, 0.0, 1.0)
+	_reach_target = clampf(out01, 0.0, 1.0)
+
+
+## How far out the arms actually are right now, after the easing.
+func reach_out() -> float:
+	return _reach_out
+
+
+# --- Reaching for a player (STO-ENEMIES-048) -------------------------
+
+## Reach for a world point, and keep following it. Call every frame with
+## the player's current position — there is no stored animation, so the
+## arms track a moving target for free.
+func aim_at(world_point: Vector3) -> void:
+	_aim = world_point
+	_aiming = true
+
+
+## Stop reaching; the arms fall back to their idle weave.
+func clear_aim() -> void:
+	_aiming = false
+
+
+func is_aiming() -> bool:
+	return _aiming
+
+
+## The joint angles that would point one arm's segments straight at the
+## current aim, in that arm's own parent space.
+##
+## Segments extend along -Z, and a segment's basis is built yaw-then-
+## pitch (Godot's default YXZ euler order), which sends its -Z axis to
+## (-cos(pitch)sin(yaw), sin(pitch), -cos(pitch)cos(yaw)). Inverting
+## that gives the pitch and yaw below. Returns Vector2(pitch, yaw).
+func _aim_pose(root: Node3D) -> Vector2:
+	# to_local puts the target in the ROOT's frame — the frame the
+	# segment's own rotation is expressed in — so this stays correct
+	# however the spider is turned, without any world-space arithmetic.
+	var d: Vector3 = root.to_local(_aim)
+	if d.length() < 0.0001:
+		return Vector2.ZERO
+	d = d.normalized()
+	return Vector2(asin(clampf(d.y, -1.0, 1.0)), atan2(-d.x, -d.z))
+
+
+## The angle, in radians, between where arm `side_index` is actually
+## pointing and the direction to `world_point`.
+##
+## This is the honest measure of "is it reaching for me": it reads the
+## arm's real world pose via its own tip, so it cannot be fooled by the
+## aim code merely having run. Large when idling, small when reaching.
+func aim_error(side_index: int, world_point: Vector3) -> float:
+	if _arms.is_empty():
+		return PI
+	var arm: Dictionary = _arms[clampi(side_index, 0, _arms.size() - 1)]
+	var root: Node3D = arm["root"]
+	var pointing: Vector3 = (arm["tip"] as Node3D).global_position \
+			- root.global_position
+	var wanted: Vector3 = world_point - root.global_position
+	if pointing.length() < 0.0001 or wanted.length() < 0.0001:
+		return PI
+	return pointing.normalized().angle_to(wanted.normalized())
 
 
 func arm_count() -> int:

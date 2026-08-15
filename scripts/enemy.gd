@@ -126,6 +126,51 @@ const WALL_TANGENT_MIN := 0.25
 var _climbing := false
 ## True while a too-tall obstacle is turning us aside (for tests).
 var _skirting := false
+## The face of whatever is currently in the way. Kept so that code
+## running LATER in the tick — the dragging spider, in particular — can
+## steer around the same obstacle the chase logic already found,
+## instead of each place probing the world again and disagreeing.
+var _block_normal := Vector3.ZERO
+
+# --- Taking you away (EPI-ENEMIES-SPIDER-TAKES-YOU) -------------------
+#
+# Reach → catch → SMASH you into the ground → drag you along the floor →
+# put you on a spike → walk away. Only a creature with pincer arms can
+# do any of it; a Walker never enters this state machine at all.
+
+enum { TAKE_NONE, TAKE_REACH, TAKE_SMASH, TAKE_DRAG, TAKE_LEAVE }
+
+## How much closer than full arm's length you must be before it stops
+## reaching and actually closes on you. Derived from the arms at runtime
+## (see `_pincer_reach`), never typed in.
+const GRAB_FRACTION := 0.55
+## Extra distance beyond arm's reach at which the arms START unfolding.
+## This margin IS the warning (STO-ENEMIES-048).
+const REACH_MARGIN := 2.5
+## The slam. One hard hit, and much bigger than a normal swing — being
+## caught by this thing has to frighten you (STO-ENEMIES-031).
+const SMASH_DAMAGE := 34.0
+const SMASH_TIME := 0.45        # how long the slam takes
+## Where you are held while dragged: behind the spider, on the floor.
+const DRAG_BEHIND := 1.4
+const DRAG_HEIGHT := 0.35
+const DRAG_SPEED_SCALE := 0.85  # it is carrying someone; it slows a little
+## Close enough to the spike to put you on it.
+const IMPALE_RANGE := 1.8
+## Further than this from the spider and the grip is lost. Generously
+## more than DRAG_BEHIND, so ordinary dragging never trips it — this is
+## for the cases where a victim ends up somewhere they cannot have
+## walked to, which the game has several ways of causing.
+const LOST_GRIP := 6.0
+## How long it walks away for before it will hunt again. Long enough
+## that being left on the spike is a real, quiet, horrible pause.
+const LEAVE_TIME := 4.0
+
+var _take := TAKE_NONE
+var _prey: Node3D = null        # who we have hold of
+var _take_timer := 0.0
+var _spike: Node3D = null       # where we are taking them
+var _takes := 0                 # how many players taken (tests read this)
 
 var _windup := 0.0              # >0 while rearing back to strike
 var _attack_cd := 0.0           # rest timer between swings
@@ -259,6 +304,7 @@ func _physics_process(delta: float) -> void:
 	# clambers. A wall it cannot get over grants no such grip.
 	_climbing = bool(blocking.get("over", false))
 	_skirting = not blocking.is_empty() and not _climbing
+	_block_normal = blocking.get("normal", Vector3.ZERO)
 	if not is_on_floor() and not _climbing:
 		velocity += get_gravity() * delta
 
@@ -267,6 +313,11 @@ func _physics_process(delta: float) -> void:
 	# Ragdolled: real physics owns the parts; we just track the pelvis
 	# and wait for it to come to rest.
 	if _ragdoll != null:
+		# Knocked down mid-carry, it lets go. Being bowled over while it
+		# is dragging you off is the one moment you get for free, and it
+		# would be absurd for a limp creature to keep its grip.
+		if _take != TAKE_NONE:
+			_drop_prey("knocked down")
 		_downed -= delta
 		global_position = _ragdoll.call("pelvis_position")
 		velocity = Vector3.ZERO
@@ -306,6 +357,15 @@ func _physics_process(delta: float) -> void:
 			_body.transform.basis = Basis(_stumble_axis,
 					STUMBLE_LEAN * sin((1.0 - t) * PI)) \
 					if t > 0.0 else Basis()
+
+	# Taking you away (EPI-ENEMIES-SPIDER-TAKES-YOU). Handled before the
+	# ordinary attack and chase logic, because a spider that has hold of
+	# someone is not looking for anyone to swing at.
+	if _pincer_arms() != null and _update_take(delta):
+		move_and_slide()
+		if _body != null and _body.has_method("set_speed"):
+			_body.call("set_speed", Vector2(velocity.x, velocity.z).length())
+		return
 
 	# Attacking (STO-ENEMIES-011). Handled before the chase logic so a
 	# winding-up enemy plants its feet instead of walking through you.
@@ -387,6 +447,313 @@ func _physics_process(delta: float) -> void:
 	# Fall damage: landing hard (e.g. dropped from height) hurts.
 	if is_on_floor() and fall_speed > FALL_SAFE_SPEED:
 		take_damage((fall_speed - FALL_SAFE_SPEED) * FALL_DAMAGE_SCALE)
+
+
+# --- Taking you away (EPI-ENEMIES-SPIDER-TAKES-YOU) -------------------
+
+## The pincer arms, or null for anything that has none. Every step of
+## the taking sequence is gated on this, so a Walker can never do it.
+func _pincer_arms() -> Node3D:
+	if _body == null or not _body.has_method("pincers"):
+		return null
+	return _body.call("pincers") as Node3D
+
+
+## How far the arms reach, read off the arms themselves. Rule 1 of this
+## creature: derive it, never type it in — a bigger spider then starts
+## reaching from further out with nothing re-tuned.
+func _pincer_reach() -> float:
+	var arms := _pincer_arms()
+	if arms == null or not arms.has_method("reach"):
+		return 0.0
+	return float(arms.call("reach"))
+
+
+## Drive the whole reach → catch → smash → drag → spike sequence.
+##
+## Returns true when this state machine owns the spider's movement for
+## the frame, so the ordinary chase and attack code is skipped.
+func _update_take(delta: float) -> bool:
+	var arms := _pincer_arms()
+	if arms == null or _dead:
+		return false
+
+	match _take:
+		TAKE_NONE, TAKE_REACH:
+			return _update_reach(arms, delta)
+		TAKE_SMASH:
+			return _update_smash(delta)
+		TAKE_DRAG:
+			return _update_drag(delta)
+		TAKE_LEAVE:
+			return _update_leave(delta)
+	return false
+
+
+## Idle and closing in: unfold the arms toward whoever is near enough,
+## and take hold of them once they are well inside reach
+## (STO-ENEMIES-048, then STO-ENEMIES-034).
+func _update_reach(arms: Node3D, _delta: float) -> bool:
+	var prey := _nearest_player()
+	var reach := _pincer_reach()
+	if prey == null or reach <= 0.0:
+		_end_reach(arms)
+		return false
+
+	var to: Vector3 = prey.global_position - global_position
+	if to.length() > reach + REACH_MARGIN:
+		_end_reach(arms)
+		return false
+
+	# Reaching does NOT take over movement — it keeps walking at you
+	# while the arms come out, which is what makes it frightening rather
+	# than a creature that stops to pose.
+	_take = TAKE_REACH
+	arms.call("aim_at", prey.global_position + Vector3.UP * 0.8)
+	arms.call("set_reach", 1.0)
+	arms.call("set_jaw", 1.0)      # jaws open as it reaches
+
+	# Close enough, and actually able to get at them? Take hold.
+	if to.length() <= reach * GRAB_FRACTION and _can_strike(prey, reach) \
+			and prey.has_method("grabbed_by"):
+		_seize(prey, arms)
+	return false
+
+
+## Stop reaching — but ONLY on the frame we actually stop.
+##
+## This used to run every frame while nobody was near, which meant the
+## spider was continuously reasserting "arms in, jaws idle" and silently
+## stamping on anything else that tried to pose the pincers. A creature
+## should only speak when it has something to say.
+func _end_reach(arms: Node3D) -> void:
+	if _take != TAKE_REACH:
+		return
+	_take = TAKE_NONE
+	arms.call("clear_aim")
+	arms.call("set_reach", 0.0)
+	arms.call("set_jaw", -1.0)     # back to the idle weave
+
+
+## It has you. Shut the jaws and start the slam.
+func _seize(prey: Node3D, arms: Node3D) -> void:
+	if not bool(prey.call("grabbed_by", self)):
+		return                      # already taken, or refusing to be
+	_prey = prey
+	_take = TAKE_SMASH
+	_take_timer = SMASH_TIME
+	_takes += 1
+	arms.call("set_jaw", 0.0)       # clamped shut on you
+	# Pick the destination NOW, while it still has hold: choosing on
+	# arrival would mean a spider that grabs you and then thinks about
+	# where to go, which reads as hesitation.
+	_spike = Spike.nearest(self, global_position)
+	DebugOverlay.log("enemy/combat", self, "%s: SEIZED %s (spike: %s)",
+			[name, prey.name, _spike.name if _spike != null else "(none)"])
+
+
+## The smash (STO-ENEMIES-034). One hard hit that puts you on the floor
+## — which is exactly where you need to be, because you are dragged and
+## never lifted.
+func _update_smash(delta: float) -> bool:
+	if not _holding():
+		return false
+	velocity.x = 0.0
+	velocity.z = 0.0
+	_take_timer -= delta
+	# Held at the drag point throughout, so the slam visibly puts you
+	# down on the ground rather than teleporting you there afterwards.
+	_place_prey()
+	if _take_timer <= 0.0:
+		if _prey.has_method("smashed_down"):
+			_prey.call("smashed_down", SMASH_DAMAGE)
+		elif _prey.has_method("hurt_by_enemy"):
+			_prey.call("hurt_by_enemy", SMASH_DAMAGE)
+		DebugOverlay.log("enemy/combat", self, "%s: smashes %s down for %.0f",
+				[name, _prey.name, SMASH_DAMAGE])
+		if _spike == null:
+			# Nowhere to put them. Let go rather than drag them forever.
+			_drop_prey("no spike in the world")
+			return false
+		_take = TAKE_DRAG
+	return true
+
+
+## Dragging you to the spike. You stay on the floor the whole way.
+func _update_drag(delta: float) -> bool:
+	if not _holding():
+		return false
+	if _spike == null or not is_instance_valid(_spike):
+		_drop_prey("spike vanished")
+		return false
+
+	var to: Vector3 = _spike.global_position - global_position
+	to.y = 0.0
+	if to.length() <= IMPALE_RANGE:
+		_impale()
+		return true
+
+	_walk(to.normalized(), _move_speed() * DRAG_SPEED_SCALE)
+	_place_prey()
+	return true
+
+
+## Put them on the spike and let go (STO-ENEMIES-034).
+func _impale() -> void:
+	var victim := _prey
+	velocity.x = 0.0
+	velocity.z = 0.0
+	if victim != null and victim.has_method("impaled_on"):
+		victim.call("impaled_on", _spike)
+	DebugOverlay.log("enemy/combat", self, "%s: leaves %s on %s",
+			[name, victim.name if victim != null else "(nobody)",
+			_spike.name if _spike != null else "(nothing)"])
+	_prey = null
+	_take = TAKE_LEAVE
+	_take_timer = LEAVE_TIME
+	var arms := _pincer_arms()
+	if arms != null:
+		arms.call("clear_aim")
+		arms.call("set_reach", 0.0)
+		arms.call("set_jaw", -1.0)
+
+
+## Walking away, having left you there. It deliberately does NOT hunt
+## during this: the pause is the point of the whole story, and a spider
+## that immediately turns round for someone else never lets the moment
+## land.
+func _update_leave(delta: float) -> bool:
+	_take_timer -= delta
+	if _take_timer <= 0.0:
+		_take = TAKE_NONE
+		return false
+	var away := global_position - (_spike.global_position if _spike != null
+			else global_position + Vector3.FORWARD)
+	away.y = 0.0
+	if away.length() < 0.01:
+		away = -global_transform.basis.z
+	_walk(away.normalized(), _move_speed() * 0.6)
+	return true
+
+
+## Walk in `dir` at `speed`, obeying the same obstacle rules the
+## ordinary chase obeys.
+##
+## Every step of the taking sequence takes over movement, and the first
+## version of each simply drove at its destination. The spider then
+## walked STRAIGHT UP a ten-metre wall while carrying a victim, because
+## taking over movement had quietly skipped every obstacle rule the
+## creature already had. Nothing else in delve can climb a wall; a busy
+## spider must not become the exception. Both places steer through here
+## now, so there is one rule rather than three copies that can drift.
+func _walk(dir: Vector3, speed: float) -> void:
+	var go := dir
+	if _skirting:
+		go = _around(go, _block_normal)
+	velocity.x = go.x * speed
+	velocity.z = go.z * speed
+	if _climbing:
+		velocity.y = CLIMB_SPEED
+	look_at(global_position + go, Vector3.UP)
+
+
+## Still actually holding a live player?
+##
+## Distance is part of the answer. A grip that survives any separation
+## is a bug waiting to happen: a player who zips away, respawns, or is
+## moved for any reason would still be "held" by a spider on the far
+## side of the map, and would be silently teleported back to it every
+## frame. If they are not roughly where we put them, we are not holding
+## them any more.
+func _holding() -> bool:
+	if _prey == null or not is_instance_valid(_prey):
+		_drop_prey("prey gone")
+		return false
+	if global_position.distance_to(_prey.global_position) > LOST_GRIP:
+		_drop_prey("they got away")
+		return false
+	return true
+
+
+## Where a dragged player is held: on the floor, behind the spider.
+##
+## The floor height is found with a ray rather than taken from the
+## spider's own position, because the spider's origin rides two metres
+## up inside its legs — using it would carry you along in mid-air, which
+## is the exact thing the operator ruled out.
+func _place_prey() -> void:
+	if _prey == null or not is_instance_valid(_prey):
+		return
+	var behind: Vector3 = global_position \
+			+ global_transform.basis.z * DRAG_BEHIND
+	var from_p := behind + Vector3.UP * 3.0
+	var q := PhysicsRayQueryParameters3D.create(from_p,
+			behind + Vector3.DOWN * 6.0)
+	q.exclude = [get_rid(), _prey.get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var ground: float = float(hit["position"].y) if not hit.is_empty() \
+			else global_position.y
+	if _prey.has_method("dragged_to"):
+		_prey.call("dragged_to", Vector3(behind.x, ground + DRAG_HEIGHT,
+				behind.z))
+
+
+## Let go of whoever we have, for whatever reason.
+func _drop_prey(why: String) -> void:
+	if _prey != null and is_instance_valid(_prey) \
+			and _prey.has_method("released"):
+		_prey.call("released")
+	if _prey != null:
+		DebugOverlay.log("enemy/combat", self, "%s: lets go of %s (%s)",
+				[name, _prey.name, why])
+	_prey = null
+	_spike = null
+	_take = TAKE_NONE
+	# Stop driving. Every taking state steers the creature itself, and
+	# a climb sets an upward velocity that nothing else clears — letting
+	# go while carrying someone up an obstacle otherwise left the spider
+	# still travelling, coasting on a decision it had abandoned.
+	velocity = Vector3.ZERO
+	var arms := _pincer_arms()
+	if arms != null:
+		arms.call("clear_aim")
+		arms.call("set_reach", 0.0)
+		arms.call("set_jaw", -1.0)
+
+
+# --- What tests and the rest of the game ask -------------------------
+
+## Make it let go of whoever it has, right now.
+##
+## Public because two different things need it: a rescue
+## (STO-ENEMIES-035) has to be able to break the grip, and any code that
+## MOVES a spider — a test fixture, a teleport, a level change — must be
+## able to reset it, because a creature that keeps hold of a victim it
+## can no longer reach is in a state nothing else can reason about.
+func let_go() -> void:
+	if _take == TAKE_NONE:
+		return
+	_drop_prey("let go")
+
+
+## How many players this creature has taken hold of.
+func takes() -> int:
+	return _takes
+
+
+## Who it has hold of right now, or null.
+func prey() -> Node3D:
+	return _prey
+
+
+## Which stage of the taking it is in, as a readable word.
+func take_state() -> String:
+	match _take:
+		TAKE_REACH: return "reach"
+		TAKE_SMASH: return "smash"
+		TAKE_DRAG: return "drag"
+		TAKE_LEAVE: return "leave"
+	return "none"
 
 
 ## Can we hit `prey` from here — close enough, and nothing solid in

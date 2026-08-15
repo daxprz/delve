@@ -142,7 +142,22 @@ func _physics_process(_d: float) -> bool:
 				_obstacle("BigWall", WALL_TOP, Vector3(14.0, 0.0, 1.0),
 						Vector2(0.0, 19.0))
 				_prey(Vector3(0.0, GROUND_Y, 16.0))
-				_spider.global_position = Vector3(0.0, GROUND_Y, 21.0)
+				# A FRESH spider, not the one from the crate phase.
+				#
+				# Teleporting a creature does not reset what it was in
+				# the middle of. Once the spider could grab and carry
+				# people (EPI-ENEMIES-SPIDER-TAKES-YOU) it arrived here
+				# still hauling the crate phase's victim off to a spike,
+				# and carrying that phase's climbing velocity with it —
+				# so this phase measured a spider doing something else
+				# entirely and blamed the wall for it.
+				#
+				# The phase wants one thing: a spider that has just
+				# walked up to a wall. Building one is both simpler and
+				# more honest than unpicking whatever it was doing.
+				_spider.queue_free()
+				_spider = _spawn(EnemyKinds.index_of("crawler"), "S2",
+						Vector3(0.0, GROUND_Y, 21.0))
 				_peak = -99.0
 				return false
 			if _ticks == 25:
@@ -190,7 +205,12 @@ func _physics_process(_d: float) -> bool:
 				return false
 			if _ticks < 12:
 				return false
-			var rag := _spider.get_parent().get_node_or_null("S1Ragdoll")
+			# Derived from whichever spider we are actually holding, not
+			# hardcoded to the first one's name: this phase used to look
+			# for "S1Ragdoll" and would silently report a failure to
+			# ragdoll if any earlier phase ever swapped the spider.
+			var rag := _spider.get_parent().get_node_or_null(
+					String(_spider.name) + "Ragdoll")
 			_check(rag != null,
 					"a clambering spider still ragdolls when hit hard")
 			return _finish()

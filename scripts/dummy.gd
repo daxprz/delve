@@ -29,6 +29,10 @@ const MAX_HEALTH := 100.0
 ## dummy — running out of dummy halfway through practising would be a
 ## strange way for it to work.
 const REVIVE_DELAY := 1.5
+## How fast a dummy bleeds while impaled (STO-ENEMIES-050). It cannot
+## play the timing game and cannot thrash, so it gets the plain base
+## rate — the number a real player would suffer doing nothing at all.
+const BLEED_ON_SPIKE := 3.0
 
 var _health := MAX_HEALTH
 var _revive := 0.0
@@ -75,6 +79,23 @@ func _physics_process(delta: float) -> void:
 		print("[DUMMY] %s standing at %.1f, %.1f, %.1f"
 				% [name, _home.x, _home.y, _home.z])
 
+	# Being taken: the spider owns where we are, so gravity and the
+	# floor are not ours to obey. Skipping move_and_slide is what stops
+	# the dummy sliding off a spike it has just been put on.
+	if _taken_by != null:
+		return
+	if _spike != null:
+		if is_instance_valid(_spike) and _spike.has_method("impale_point"):
+			global_position = _spike.call("impale_point")
+		# It bleeds like anyone else, and going down releases it —
+		# otherwise a dummy left on a spike would revive still pinned to
+		# it, alive at full health, forever.
+		_health = maxf(0.0, _health - BLEED_ON_SPIKE * delta)
+		if _health <= 0.0:
+			released()
+			_go_down()
+		return
+
 	# Gravity only. No steering, no chasing, no input — the operator
 	# asked for something that just stands there, and every rescue
 	# story is testable against a thing that is merely present and
@@ -118,6 +139,62 @@ func take_damage(amount: float) -> void:
 ## nobody, so it simply takes the hit where it stands.
 func hurt_by_enemy(amount: float) -> void:
 	take_damage(amount)
+
+
+# --- Being taken by the spider (STO-ENEMIES-034) ---------------------
+#
+# The dummy exists so the taking and the rescue can be tried by one
+# person at a keyboard, so it has to be grabbable exactly like a real
+# player. It has no screen and no timing game — it just gets taken, and
+# bleeds on the spike like anybody else.
+
+var _taken_by: Node3D = null
+var _spike: Node3D = null
+
+
+func grabbed_by(spider: Node3D) -> bool:
+	if _taken_by != null or _spike != null or _revive > 0.0:
+		return false
+	_taken_by = spider
+	velocity = Vector3.ZERO
+	DebugOverlay.log("player/combat", self, "%s: GRABBED by %s",
+			[name, spider.name if spider != null else "?"])
+	return true
+
+
+func smashed_down(amount: float) -> void:
+	take_damage(amount)
+
+
+func dragged_to(point: Vector3) -> void:
+	global_position = point
+	velocity = Vector3.ZERO
+
+
+func impaled_on(spike: Node3D) -> void:
+	_taken_by = null
+	_spike = spike
+	if spike != null and spike.has_method("impale_point"):
+		global_position = spike.call("impale_point")
+	DebugOverlay.log("player/combat", self, "%s: IMPALED on %s",
+			[name, spike.name if spike != null else "?"])
+
+
+func released() -> void:
+	_taken_by = null
+	_spike = null
+
+
+func is_taken() -> bool:
+	return _taken_by != null or _spike != null
+
+
+func is_impaled() -> bool:
+	return _spike != null
+
+
+func bleed_rate() -> float:
+	return BLEED_ON_SPIKE if _spike != null else 0.0
 
 
 ## Tells the rest of delve this is not somebody's actual character —

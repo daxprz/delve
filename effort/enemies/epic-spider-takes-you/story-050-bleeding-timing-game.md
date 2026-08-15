@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: L
-status: draft
+status: done
 date: 2026-08-14
 depends-on: [STO-ENEMIES-034]
 bd-id: delve-kuq1
@@ -78,20 +78,40 @@ That collapses two rules into one, which is why it is the right answer:
 
 ## Definition of Done
 
-- [ ] Pinned, a bleed clock runs down, and reaching zero kills you.
-- [ ] A timing game appears and can be hit or missed.
-- [ ] Hitting it on time measurably slows the bleeding for a period.
-- [ ] Missing costs nothing extra — the punishment is the time lost.
-- [ ] Attacking measurably speeds the bleeding up.
-- [ ] Struggling measurably speeds the bleeding up.
-- [ ] Movement does nothing whatsoever.
-- [ ] Looking around is never restricted.
-- [ ] A perfect player lasts **noticeably** longer than one doing
-      nothing, and a thrashing player dies **noticeably** sooner. Proven
-      by a headless test running all three and printing the three
-      survival times.
-- [ ] Being rescued (STO-ENEMIES-035) stops the bleeding at once.
-- [ ] The operator plays it and agrees it feels tense rather than fiddly.
+- [x] Pinned, a bleed clock runs down at **3.0 hp/s**, and reaching zero
+      kills you.
+- [x] A timing game appears and can be hit or missed. A marker sweeps a
+      1.5 s cycle; the good window is the middle 16%.
+- [x] Hitting it on time measurably slows the bleeding — to **35%** for
+      2.2 s.
+- [x] Missing costs nothing extra — the punishment is the time lost.
+- [x] Attacking measurably speeds the bleeding up (+0.18 to the
+      multiplier, permanently).
+- [x] Struggling measurably speeds the bleeding up, **and** takes 0.01
+      off your own life. Measured: 140.000 → 139.990 hp, rate
+      3.00 → 3.54.
+- [x] Movement does nothing whatsoever — the taken state returns before
+      any movement code runs.
+- [x] Looking around is never restricted.
+- [x] A perfect player lasts **noticeably** longer and a thrashing
+      player dies **noticeably** sooner — `tests/smoke_bleeding.gd`
+      runs all three and prints the times.
+- [x] Being rescued stops the bleeding at once (rate → 0.00).
+- [ ] **The operator plays it and agrees it feels tense rather than
+      fiddly.** Not done — only you can close this one.
+
+## Built (2026-08-14) — the three survival times
+
+Run on a sliver of health so the test finishes quickly; the proportions
+are what matter.
+
+| how you play | how long you last |
+|---|---|
+| **calm** — timing game hit every time | **10.3 s** |
+| **nothing at all** | **4.0 s** |
+| **thrashing** — struggling every tick | **0.8 s** |
+
+Playing well bought **2.6×** the time. Fighting cost **80%** of it.
 
 ## Out of scope
 

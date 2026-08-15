@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: draft
+status: done
 date: 2026-08-14
 depends-on: []
 bd-id: delve-c8um
@@ -41,12 +41,22 @@ be frightening.
 
 ## Definition of Done
 
-- [ ] At least one sharp thing stands in the world and is visible.
-- [ ] It is in a group, and a query returns the nearest one to any point.
-- [ ] It is solid — you cannot walk through it.
-- [ ] Adding a second one needs no code change.
-- [ ] Proven by a headless test that finds the nearest spike from two
-      different positions and gets the right answer for each.
+- [x] At least one sharp thing stands in the world and is visible.
+      **Two**, at (10, 0, -6) and (-10, 0, 2).
+- [x] It is in a group, and a query returns the nearest one to any point.
+- [x] It is solid — you cannot walk through it.
+- [x] Adding a second one needs no code change. It is a list in
+      `main.gd`; both were added that way.
+- [x] Proven by a headless test that finds the nearest spike from two
+      different positions and gets the right answer for each —
+      `tests/smoke_spikes.gd`, which asks from beside *every* spike in
+      turn, so a lookup that ignored its argument would fail.
+
+## Built (2026-08-14)
+
+`scripts/spike.gd` — a 2.4 m cone. `Spike.nearest()` is static and
+group-driven. `impale_point()` sits 1.87 m up the shaft, so a victim is
+visibly **on** it rather than balanced on the tip.
 
 ## Out of scope
 

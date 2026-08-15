@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: draft
+status: done
 date: 2026-08-14
 depends-on: [STO-ENEMIES-030]
 bd-id: delve-i8ih
@@ -56,20 +56,32 @@ further away with nothing re-tuned.
 
 ## Definition of Done
 
-- [ ] Far away, the arms idle exactly as they do now.
-- [ ] Inside reach, both arms extend toward the player's actual position
-      and follow them as they move.
-- [ ] The jaws open as it reaches.
-- [ ] It works for a player standing to the side or behind, not just
-      dead ahead.
-- [ ] The arms still look floppy while reaching — they swing out and
-      settle, they do not snap.
-- [ ] The trigger distance is **read off the arms**, not a typed-in
-      number.
-- [ ] Proven by a headless test that measures the angle between an arm
-      and the direction to the player: **large** when far, **small**
-      when close. A test that only checks "the reach code ran" does not
-      count.
+- [x] Far away, the arms idle exactly as they do now. Measured
+      **159.9°** off the target while idling.
+- [x] Inside reach, both arms extend toward the player's actual position
+      and follow them as they move. **4.2°** off when reaching.
+- [x] The jaws open as it reaches.
+- [x] It works for a player standing to the side or behind, not just
+      dead ahead. The test aims **behind and to one side** deliberately;
+      aiming straight ahead would pass with the arms welded solid.
+- [ ] The arms still look floppy while reaching. The flop is added on
+      top of the aim in code, and the arms ease on over ~0.3 s rather
+      than snapping — but **this is not measured**, so it is not ticked.
+- [x] The trigger distance is **read off the arms**, not a typed-in
+      number (`_pincer_reach()` + a margin).
+- [x] Proven by a headless test measuring the angle between the arm and
+      the direction to the target — `tests/smoke_arms_reach.gd`. It
+      takes the **worse** of the two arms, because one arm finding you
+      while the other stares at the floor is not reaching for you.
+
+## Built (2026-08-14)
+
+| | worst arm, off target |
+|---|---|
+| idling | **159.9°** |
+| reaching | **4.2°** |
+| target jumps to the other side | **5.0°** |
+| released | **133.3°** |
 
 ## Out of scope
 

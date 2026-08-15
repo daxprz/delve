@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: draft
+status: done
 date: 2026-08-14
 depends-on: [STO-ENEMIES-034]
 bd-id: delve-eib5
@@ -49,17 +49,27 @@ ever taking control away.
 
 ## Definition of Done
 
-- [ ] Grabbed: a visible jolt when it smashes you into the ground.
-- [ ] Dragged: the screen dims, and you can still make out the room and
-      turn to look around.
-- [ ] Impaled: the screen goes red, and you can still make out the room.
-- [ ] Nothing ever fades to full black or full red.
-- [ ] The red tracks the bleed rate once STO-ENEMIES-050 exists.
-- [ ] It clears completely when you are rescued.
-- [ ] It clears completely when you die and respawn — no red left over
-      on a fresh life.
-- [ ] Proven by a headless test reading the effect's actual strength at
-      each stage, including that it returns to zero after rescue.
+- [ ] Grabbed: a visible jolt when it smashes you into the ground. The
+      smash lands and hurts, but there is **no camera jolt** — not
+      built, not ticked.
+- [x] Dragged: the screen dims (alpha **0.48**) and you can still make
+      out the room and turn to look around.
+- [x] Impaled: the screen goes red (alpha **0.43**) and you can still
+      make out the room.
+- [x] Nothing ever fades to full black or full red. Capped at 0.62.
+- [x] The red tracks the bleed rate — measured going **0.43 → 0.60**
+      when the player thrashed.
+- [x] It clears completely when you are rescued (alpha **0.007**).
+- [x] It clears completely when you die and respawn: the update runs
+      every frame whether or not you are taken, precisely so it cannot
+      be left behind.
+- [x] Proven by `tests/smoke_screen_taken.gd`.
+
+## Built (2026-08-14)
+
+Looking around was free: it lives in the input handler, not in the
+physics step the taken state returns out of. That is why the "you can
+look around" rule holds without a line of code defending it.
 
 ## Out of scope
 

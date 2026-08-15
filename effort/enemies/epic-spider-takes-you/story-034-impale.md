@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: L
-status: draft
+status: in-progress
 date: 2026-08-14
 depends-on: [STO-ENEMIES-030, STO-ENEMIES-033]
 bd-id: delve-gwv3
@@ -79,19 +79,38 @@ where it hurts.
 
 ## Definition of Done
 
-- [ ] The spider's pincers can catch a player (or the dummy).
-- [ ] Caught, it **smashes them into the ground** — one hard hit that
-      leaves them on the floor.
-- [ ] It **drags them along the ground** behind it — not lifted, not
-      dangling. They stay on the floor.
-- [ ] They can see and turn the whole way there.
-- [ ] It finds a spike and leaves them on it.
-- [ ] Impaled, you can still turn and look.
-- [ ] Mashing Space takes 0.01 off the return timer per press.
-- [ ] Struggling alone is **not enough** to free you. Someone must come.
-- [ ] Attacks sometimes do nothing while pinned.
-- [ ] Momentum-based attacks *always* do nothing while pinned.
-- [ ] Proven by a headless test.
+- [x] The spider's pincers can catch a player (or the dummy).
+- [x] Caught, it **smashes them into the ground** — one hard hit (34
+      damage) that leaves them on the floor.
+- [x] It **drags them along the ground** behind it — not lifted, not
+      dangling. Measured: never more than **0.35 m** above the floor
+      across the whole drag.
+- [x] They can see and turn the whole way there.
+- [x] It finds a spike and leaves them on it. Measured: left **0.00 m**
+      from the spike's centre and **1.87 m** up it.
+- [x] Impaled, you can still turn and look.
+- [x] Mashing Space takes 0.01 off **your own life** per press.
+- [x] Struggling alone is **not enough** to free you. Nothing a pinned
+      player can do frees them — every action only bleeds them faster.
+- [ ] Attacks sometimes do nothing while pinned. **Not built.** Attacks
+      currently do nothing at all while pinned, because the taken state
+      returns before the ability code. "Sometimes" is not implemented.
+- [ ] Momentum-based attacks *always* do nothing while pinned. True by
+      accident today (nothing works), not by the rule. Not ticked.
+- [x] Proven by a headless test — `tests/smoke_taken.gd` watches the
+      whole sequence happen unprompted and records the peak height of
+      the victim during the drag, so a build that *carried* people
+      would fail even though every other check still passed.
+
+## Built (2026-08-14) — most of it
+
+The spine works end to end, unprompted:
+`none → reach → smash → drag → leave`, dragging the victim **5.1 m** to
+a spike and leaving them alive on it while the spider walks away.
+
+**Still open:** the "sometimes your attacks do nothing" rule. Right now
+being pinned stops *everything*, which is close but not what was asked
+for — you should be able to swing and have it occasionally connect.
 
 ## Out of scope
 

@@ -44,6 +44,55 @@ var _max_health := 100.0
 var _health := 100.0
 var _hp_fill: ColorRect
 var _spawn_pos := Vector3(0.0, 2.0, 0.0)
+
+# --- Being taken by the spider (STO-ENEMIES-034 / 049 / 050) ----------
+#
+# Three stages, and the screen looks different in each so you always
+# know which one you are in without being told in words:
+#   grabbed  -> smashed into the ground, then dragged, screen DIM
+#   impaled  -> left on a spike, screen RED, bleeding on a clock
+#   free     -> nothing
+#
+# Throughout, two rules hold and neither is ever bent: you can always
+# LOOK AROUND, and moving does absolutely nothing.
+
+## How fast you bleed on the spike, in health per second, doing nothing
+## at all. Tuned so an untouched player lasts about half a minute —
+## long enough for a friend across the map to have a real chance.
+const BLEED_BASE := 3.0
+## What playing the timing game well multiplies the bleeding by. It
+## SLOWS the bleeding; it can never stop or reverse it.
+const BLEED_CALM := 0.35
+## How long one good hit on the timing game keeps you calm for.
+const CALM_TIME := 2.2
+## Every attempt to fight or struggle adds this to the bleed multiplier,
+## and it never comes back off. This is the operator's rule: the more
+## you fight, the faster you bleed.
+const THRASH_COST := 0.18
+## What one mash of Space takes off your own life, decided by the
+## operator on 2026-08-14. Struggling is never a reward.
+const STRUGGLE_COST := 0.01
+## The timing game: a marker sweeps back and forth, and there is one
+## narrow window where pressing counts.
+const TIMING_PERIOD := 1.5      # seconds for a full sweep
+const TIMING_WINDOW := 0.16     # how wide the good bit is, as a fraction
+
+var _grabbed_by: Node3D = null   # the spider dragging us
+var _impaled_on: Node3D = null   # the spike we are left on
+var _bleed_thrash := 0.0         # grows every time we fight; never falls
+var _calm := 0.0                 # seconds of slowed bleeding left
+var _timing := 0.0               # 0..1 marker position
+var _timing_hits := 0
+var _timing_misses := 0
+var _struggles := 0
+## How many times we have bled out on a spike. Counted because dying
+## there and respawning happen in the SAME frame, so "health reached
+## zero" is a moment nothing outside this script can ever observe.
+var _bled_out := 0
+var _screen_tint: ColorRect      # the dim / red overlay
+var _timing_bar: ColorRect
+var _timing_zone: ColorRect
+var _timing_mark: ColorRect
 # Flyer (STO-CHARACTER-022/023/024).
 const FLY_MAX_FUEL := 5.0      # seconds of flight
 const FLY_ASCEND := 6.0        # up speed when flapping (jump held)
@@ -486,6 +535,169 @@ func _remote_enemy_damage(amount: float) -> void:
 	take_damage(amount)
 
 
+# --- Being taken (STO-ENEMIES-034 / 049 / 050) -----------------------
+
+## The spider has hold of us. Returns false if we are already taken, so
+## two spiders can never own the same player.
+func grabbed_by(spider: Node3D) -> bool:
+	if _grabbed_by != null or _impaled_on != null:
+		return false
+	_grabbed_by = spider
+	velocity = Vector3.ZERO
+	DebugOverlay.log("player/combat", self, "%s: GRABBED by %s",
+			[name, spider.name if spider != null else "?"])
+	return true
+
+
+## Slammed into the ground at the start of the drag.
+func smashed_down(amount: float) -> void:
+	take_damage(amount)
+
+
+## The spider is dragging us; it says where we are. Position is driven
+## entirely by the captor — we never move ourselves.
+func dragged_to(point: Vector3) -> void:
+	global_position = point
+	velocity = Vector3.ZERO
+
+
+## Left on a spike. The bleeding starts here.
+func impaled_on(spike: Node3D) -> void:
+	_grabbed_by = null
+	_impaled_on = spike
+	_bleed_thrash = 0.0
+	_calm = 0.0
+	_timing = 0.0
+	velocity = Vector3.ZERO
+	if spike != null and spike.has_method("impale_point"):
+		global_position = spike.call("impale_point")
+	DebugOverlay.log("player/combat", self, "%s: IMPALED on %s",
+			[name, spike.name if spike != null else "?"])
+
+
+## Freed — by a friend, by the spider being knocked down, or by dying.
+func released() -> void:
+	var was_taken := _grabbed_by != null or _impaled_on != null
+	_grabbed_by = null
+	_impaled_on = null
+	_bleed_thrash = 0.0
+	_calm = 0.0
+	if was_taken:
+		DebugOverlay.log("player/combat", self, "%s: released", [name])
+	_update_screen_tint()
+
+
+func is_taken() -> bool:
+	return _grabbed_by != null or _impaled_on != null
+
+func is_impaled() -> bool:
+	return _impaled_on != null
+
+func is_grabbed() -> bool:
+	return _grabbed_by != null
+
+
+## How fast we are losing health right now, in health per second.
+##
+## One expression, and it is the whole design of STO-ENEMIES-050:
+## fighting only ever multiplies it UP, and the timing game is the only
+## thing that brings it down — never below zero, never to a heal.
+func bleed_rate() -> float:
+	if _impaled_on == null:
+		return 0.0
+	var rate := BLEED_BASE * (1.0 + _bleed_thrash)
+	if _calm > 0.0:
+		rate *= BLEED_CALM
+	return rate
+
+
+func timing_hits() -> int:
+	return _timing_hits
+
+func timing_misses() -> int:
+	return _timing_misses
+
+func struggles() -> int:
+	return _struggles
+
+
+## How many times this player has bled to death on a spike.
+func bled_out() -> int:
+	return _bled_out
+
+func thrash() -> float:
+	return _bleed_thrash
+
+
+## Where the timing marker is, 0..1, and whether it is in the good bit.
+func timing_marker() -> float:
+	return _timing
+
+func timing_is_good() -> bool:
+	return absf(_timing - 0.5) <= TIMING_WINDOW * 0.5
+
+
+## Press the timing game. Returns true if it was a good hit.
+##
+## Public so a test can play the game properly without synthesising
+## input events — the thing being tested is the RULE (a good press slows
+## the bleeding), not the keyboard.
+func press_timing() -> bool:
+	if _impaled_on == null:
+		return false
+	if timing_is_good():
+		_timing_hits += 1
+		_calm = CALM_TIME
+		return true
+	_timing_misses += 1
+	return false
+
+
+## Struggle, or swing at nothing. Both cost you, and that is the point.
+func thrash_once(is_struggle: bool) -> void:
+	if _impaled_on == null and _grabbed_by == null:
+		return
+	_bleed_thrash += THRASH_COST
+	if is_struggle:
+		_struggles += 1
+		# The operator settled this: 0.01 off YOUR OWN LIFE. Struggling
+		# never buys time and never helps.
+		_health = maxf(0.0, _health - STRUGGLE_COST)
+
+
+## Everything that happens while the spider has you.
+func _update_taken(delta: float) -> void:
+	velocity = Vector3.ZERO
+
+	if _impaled_on != null:
+		# The marker sweeps back and forth; the good bit is the middle.
+		_timing = fmod(_timing + delta / TIMING_PERIOD, 1.0)
+		if _calm > 0.0:
+			_calm -= delta
+		_health = maxf(0.0, _health - bleed_rate() * delta)
+		if is_instance_valid(_impaled_on) \
+				and _impaled_on.has_method("impale_point"):
+			global_position = _impaled_on.call("impale_point")
+
+		# Space: struggle. LMB/RMB: fight. Guard: steady yourself and
+		# play the timing game. Two of those three make it worse.
+		if Input.is_action_just_pressed("jump"):
+			thrash_once(true)
+		if Input.is_action_just_pressed("scratch_left") \
+				or Input.is_action_just_pressed("scratch_right"):
+			thrash_once(false)
+		if Input.is_action_just_pressed("ability_guard"):
+			press_timing()
+
+		if _health <= 0.0:
+			_bled_out += 1
+			DebugOverlay.log("player/combat", self,
+					"%s: bled out on the spike", [name])
+			released()
+			_respawn()
+			return
+
+
 ## One claw swipe. Always SCRATCH_DAMAGE, however fast you are
 ## clicking (STO-CHARACTER-066).
 func do_scratch(side: int) -> bool:
@@ -786,6 +998,54 @@ func _build_hud() -> void:
 	var hud := CanvasLayer.new()
 	hud.name = "HUD"
 	add_child(hud)
+
+	# The dim/red overlay (STO-ENEMIES-049). Added FIRST so every bar
+	# below draws on top of it — the health bar going red-on-red at the
+	# exact moment you most need to read it would be perverse.
+	_screen_tint = ColorRect.new()
+	_screen_tint.name = "ScreenTint"
+	_screen_tint.color = Color(0, 0, 0, 0)
+	_screen_tint.anchor_right = 1.0
+	_screen_tint.anchor_bottom = 1.0
+	_screen_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_screen_tint.visible = false
+	hud.add_child(_screen_tint)
+
+	# The bleeding timing game (STO-ENEMIES-050). Hidden until you are
+	# on a spike. Centred and wide, because you have to be able to read
+	# it through the red while you are dying.
+	_timing_bar = ColorRect.new()
+	_timing_bar.name = "TimingBar"
+	_timing_bar.color = Color(0, 0, 0, 0.65)
+	_timing_bar.size = Vector2(324, 26)
+	_timing_bar.anchor_left = 0.5
+	_timing_bar.anchor_right = 0.5
+	_timing_bar.anchor_top = 1.0
+	_timing_bar.anchor_bottom = 1.0
+	_timing_bar.offset_left = -162
+	_timing_bar.offset_right = 162
+	_timing_bar.offset_top = -110
+	_timing_bar.offset_bottom = -84
+	_timing_bar.visible = false
+	hud.add_child(_timing_bar)
+
+	_timing_zone = ColorRect.new()
+	_timing_zone.name = "TimingZone"
+	_timing_zone.color = Color(0.2, 0.75, 0.3, 0.85)
+	_timing_zone.size = Vector2(320.0 * TIMING_WINDOW, 22)
+	_timing_zone.position = Vector2(
+			2.0 + 316.0 * 0.5 - 320.0 * TIMING_WINDOW * 0.5, 2)
+	_timing_zone.visible = false
+	_timing_bar.add_child(_timing_zone)
+
+	_timing_mark = ColorRect.new()
+	_timing_mark.name = "TimingMark"
+	_timing_mark.color = Color(0.95, 0.95, 0.95)
+	_timing_mark.size = Vector2(5, 22)
+	_timing_mark.position = Vector2(2, 2)
+	_timing_mark.visible = false
+	_timing_bar.add_child(_timing_mark)
+
 	var bg := ColorRect.new()
 	bg.color = Color(0, 0, 0, 0.55)
 	bg.size = Vector2(224, 28)
@@ -874,6 +1134,72 @@ func _process(_delta: float) -> void:
 		# Green when ready to leap, amber while recharging.
 		_pounce_fill.color = Color(0.3, 0.85, 0.4) if _pounce_cd <= 0.0 \
 				else Color(0.85, 0.65, 0.2)
+	# Runs every frame, taken or not, so the effect also CLEARS itself
+	# when you are freed or respawn — a red screen left over on a fresh
+	# life would be a bug you could not do anything about.
+	_update_screen_tint()
+	_update_timing_ui()
+
+
+# --- The screen tells you what is happening (STO-ENEMIES-049) --------
+
+## How dark the screen goes while you are being dragged. Deliberately
+## well short of black: the operator said "you can look around", and a
+## screen you cannot see through is the same as not being in the game.
+const DIM_ALPHA := 0.55
+## The most red it ever gets, at maximum bleed. Also well short of
+## opaque — "you can still kinda see" is a requirement, not a nicety.
+const RED_ALPHA_MIN := 0.22
+const RED_ALPHA_MAX := 0.62
+## How fast the effect fades in and out.
+const TINT_RATE := 3.0
+
+var _tint_shown := Color(0, 0, 0, 0)
+
+
+## What the screen SHOULD look like right now.
+func screen_tint_target() -> Color:
+	if _impaled_on != null:
+		# Red, and the redness follows how fast you are bleeding — so the
+		# colour is the gauge. Play the timing game well and the room
+		# comes back; thrash and it closes in on you.
+		var over: float = clampf(bleed_rate() / (BLEED_BASE * 2.0), 0.0, 1.0)
+		return Color(0.75, 0.02, 0.02,
+				lerpf(RED_ALPHA_MIN, RED_ALPHA_MAX, over))
+	if _grabbed_by != null:
+		return Color(0, 0, 0, DIM_ALPHA)
+	return Color(0, 0, 0, 0.0)
+
+
+## What the screen actually looks like right now (tests read this).
+func screen_tint() -> Color:
+	return _tint_shown
+
+
+func _update_screen_tint() -> void:
+	var want := screen_tint_target()
+	var t: float = clampf(TINT_RATE * get_process_delta_time(), 0.0, 1.0)
+	_tint_shown = _tint_shown.lerp(want, t)
+	if _screen_tint != null:
+		_screen_tint.color = _tint_shown
+		_screen_tint.visible = _tint_shown.a > 0.003
+
+
+## The timing game's little bar, only visible while you are on a spike.
+func _update_timing_ui() -> void:
+	var on: bool = _impaled_on != null
+	if _timing_bar != null:
+		_timing_bar.visible = on
+	if _timing_zone != null:
+		_timing_zone.visible = on
+	if _timing_mark != null:
+		_timing_mark.visible = on
+		if on:
+			_timing_mark.position.x = 2.0 + _timing * 316.0
+			# Green when a press would count, so the rule is legible
+			# through the red without anyone explaining it.
+			_timing_mark.color = Color(0.3, 1.0, 0.35) if timing_is_good() \
+					else Color(0.95, 0.95, 0.95)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -895,6 +1221,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		return  # remote copies follow the MultiplayerSynchronizer
+
+	# Taken by the spider. Handled first and returns immediately: no
+	# abilities, no movement, no heal-over-time. Looking around is
+	# untouched because it lives in the input handler, not here — which
+	# is exactly why you can still watch it walk away.
+	if _grabbed_by != null or _impaled_on != null:
+		_update_taken(delta)
+		return
 
 	# Combo decays if you don't land a hit in time (STO-COMBAT-003).
 	if _combo_timer > 0.0:
