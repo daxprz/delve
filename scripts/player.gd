@@ -452,6 +452,8 @@ func _ready() -> void:
 	body.set("build_human_arms", not _has_arms)
 	# The Sniper has big listening ears (STO-CHARACTER-038).
 	body.set("ears", bool(def.get("ears", false)))
+	# The Mage has four arms (STO-CHARACTER-075).
+	body.set("four_arms", bool(def.get("four_arms", false)))
 	add_child(body)
 
 	# Only the Grabber builds the mechanical arms (STO-CHARACTER-001).

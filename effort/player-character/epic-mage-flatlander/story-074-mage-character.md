@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: player-character
 size: M
-status: draft
+status: done
 date: 2026-08-14
 depends-on: []
 bd-id: delve-jvk1
@@ -27,13 +27,22 @@ because every other story in this epic needs somebody to happen to.
 
 ## Definition of Done
 
-- [ ] The Mage appears on the character select screen.
-- [ ] You can pick him and spawn as him.
-- [ ] He has his own colour, speed, jump and health, like every other
-      character.
-- [ ] He is added as DATA in the character registry, not by touching
-      the player controller — that is what the registry is for.
-- [ ] Proven by a headless test.
+- [x] The Mage is the **fifth** entry in the character registry, so he
+      appears on the select screen with everyone else.
+- [x] You can pick him and spawn as him — verified by spawning one and
+      asking it who it is.
+- [x] He has his own colour, speed (4.6), jump (4.6) and health (75).
+- [x] He was added as **DATA only**. Not one line of the player
+      controller was changed to make him exist, which is what the
+      registry is for.
+- [x] He does not get the Grabber's mechanical arms.
+- [x] Proven by `tests/smoke_mage.gd`.
+
+## Built (2026-08-14)
+
+Slower and squishier than the others — 4.6 m/s and 75 health, between
+the Sniper's 65 and the Runner's 80. He is not meant to win a fight;
+his power is going somewhere nobody can follow.
 
 ## Out of scope
 

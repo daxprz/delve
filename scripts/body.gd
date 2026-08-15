@@ -53,6 +53,19 @@ var build_human_arms := true
 ## Big ears on the head (STO-CHARACTER-038, Sniper).
 var ears := false
 
+## A SECOND pair of arms, lower down the torso (STO-CHARACTER-075, the
+## Mage). Four is the readable number: instantly obviously wrong for a
+## person, without becoming a mass of limbs you cannot count. Set
+## before _ready.
+var four_arms := false
+## How far down the torso the lower shoulders sit, and how much smaller
+## the lower arms are. Both derived from the torso this body actually
+## generated, never typed in as absolute metres, so a big Mage and a
+## small one both get arms that fit them.
+const LOWER_ARM_DROP := 0.34      # of torso height, below the uppers
+const LOWER_ARM_SCALE := 0.86     # slightly shorter than the top pair
+const LOWER_ARM_OUT := 0.80       # tucked in a little from the uppers
+
 ## Base body color. Set before _ready (players: GRAY; enemies: red).
 var base_color := GRAY
 
@@ -254,6 +267,16 @@ func _build() -> void:
 		_seg(shoulder, Vector3(0.15, 0.15, 0.15), Vector3.ZERO)
 		if build_human_arms:
 			_build_arm(shoulder, s, ar, "")
+
+		# The Mage's second pair (STO-CHARACTER-075). Lower down and a
+		# little smaller, so all four read as four rather than blurring
+		# into one mass — you should be able to COUNT them.
+		if four_arms and build_human_arms:
+			var lower := _joint(torso, "LowerShoulder" + s,
+					Vector3(0.26 * bk * side * LOWER_ARM_OUT,
+					0.18 * to - LOWER_ARM_DROP * to, 0.0))
+			_seg(lower, Vector3(0.13, 0.13, 0.13), Vector3.ZERO)
+			_build_arm(lower, s, ar * LOWER_ARM_SCALE, "Lower")
 
 		# Legs
 		var hip := _joint(_pelvis, "Hip" + s, Vector3(0.12 * bk * side, -0.08, 0.0))

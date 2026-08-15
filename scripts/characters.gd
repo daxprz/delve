@@ -58,6 +58,19 @@ static var LIST := [
 		"gun": true,           # STO-CHARACTER-047: the rifle
 		"abilities": [],
 	},
+	# --- The Mage (EPI-CHARACTER-MAGE-FLATLANDER). Four arms, and the
+	# only character who can step sideways into the second dimension.
+	# Added as DATA, which is what this registry is for: a new character
+	# should not need the player controller touched.
+	{
+		"id": "mage", "name": "Mage",
+		"color": Color(0.45, 0.3, 0.75),
+		"speed": 4.6, "sprint": 5.6, "jump": 4.6, "health": 75.0,
+		"arms": false, "double_jump": false, "wall_jump": false,
+		"wall_climb": false, "tail": false, "humanoid": true,
+		"four_arms": true,       # STO-CHARACTER-075
+		"abilities": [],
+	},
 ]
 
 

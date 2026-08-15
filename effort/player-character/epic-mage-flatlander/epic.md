@@ -61,8 +61,8 @@ its hitbox is**.
 
 | # | Slug | Size | Notes |
 |---|------|------|-------|
-| 074 | mage-character | M | **First.** He exists and you can pick him. |
-| 075 | four-arms | M | Four procedural arms, not two. |
+| 074 | mage-character | M | ✅ He exists and you can pick him. |
+| 075 | four-arms | M | ✅ Four procedural arms, not two. |
 | 076 | flatten-to-plane | L | Press F, pick the plane, become flat. |
 | 077 | slip-through-gaps | L | The point of it: go where nobody can follow. |
 | 078 | platformer-view | L | His camera and controls become a flat game. |
@@ -76,8 +76,8 @@ to flatten before there is anything to look at or slip through.
 
 ## Definition of Done
 
-- [ ] The Mage is on the character select screen and can be played.
-- [ ] He has four arms.
+- [x] The Mage is on the character select screen and can be played.
+- [x] He has four arms.
 - [ ] Pressing F flattens him onto the plane he is facing; pressing it
       again brings him back.
 - [ ] The change is a **slow, mesmerising warp**, never a snap.
