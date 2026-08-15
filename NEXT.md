@@ -19,6 +19,34 @@ Read that first next time. This file is only the state of play.
 
 ---
 
+## 🧠 The spider has a MIND now (2026-08-14)
+
+`scripts/spider_mind.gd`. It is no longer omniscient and no longer the
+same every time.
+
+| | measured |
+|---|---|
+| senses you by hitbox, range | **26 m** — finite, which is the point |
+| moved 400 m away | finds nothing, **still has the trail** |
+| practises its walk | stride **1.000 → 1.350** over 49 attempts |
+| memory across a restart | **320 observations**, intact |
+| aims where you are GOING (taught vs untaught) | **1.51 m** ahead vs **0.00 m** |
+| picks the winning plan | **86%** vs **26%** for a spider that never met you |
+| real mistakes | **65 in 400** choices — it can be baited |
+
+**The honest limit is written at the top of the file.** This is not a
+brain. It keeps score and adapts, and it genuinely gets harder — but it
+is bookkeeping and rules underneath, and "almost infinite" comes from
+combining many small behaviours.
+
+**Not finished inside those stories:** losing a leg does not yet change
+HOW it moves (only the number exists); your dodge timing is counted but
+nothing acts on it; and the four plans are chosen and scored but do not
+yet make it move differently. All three are written into their stories
+as unticked.
+
+---
+
 ## 🕷️ The spider can now TAKE you (2026-08-14)
 
 The whole sequence works, unprompted, end to end:
@@ -91,6 +119,14 @@ Restart Play first — a running game keeps the old code.
 ---
 
 ## 🐛 Known bugs, found and not yet fixed
+
+- **`smoke_wrap_ragdoll` is FLAKY.** It passes 3 runs out of 3 on its
+  own and fails inside the full suite, where the machine is busier. It
+  also failed with my changes stashed, so it is not the mind. The
+  fingers all report a grip of exactly 1.00, which looks like the grab
+  being sampled before the hand has closed. Same family as the
+  `smoke_arms` "knuckles=0" failure. **A flaky test is worse than a
+  failing one** — it teaches you to ignore red.
 
 - **`smoke_tail` fails, and it is not really about the spider.** The
   Runner's tail can come to rest **draped across its own owner's hip**
