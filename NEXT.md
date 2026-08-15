@@ -19,6 +19,55 @@ Read that first next time. This file is only the state of play.
 
 ---
 
+## 🧙 The Mage is FINISHED (2026-08-15)
+
+All nine stories of EPI-CHARACTER-MAGE-FLATLANDER are built. Press
+**F** and he steps into the second dimension.
+
+| | measured |
+|---|---|
+| the warp | **1.2 s**, sampled 0.14 → 0.97, continuous, never a snap |
+| halfway through | **0.47 warped and still SOLID** — no slipping through yet |
+| how thin he gets | 0.520 m → **0.021 m**, still full width and height |
+| the hitbox | 0.80 m → **0.06 m**, through a 0.30 m slot |
+| the same slot, solid | **stops him** — the comparison that makes it mean something |
+| a wall with no gap | **still stops him.** Thin, not a ghost |
+| camera | glides **22 m** out, 100% along the normal, 75° → 16° |
+| what he can see | a **1.80 m** slice, not 4000 m |
+| controls | **D** +4.60 m, **A** −4.60 m, **W/S** nothing |
+| the mouse | **0.0000 m** of effect |
+| enemies | in his world **only** while their hitbox is on the line — out → IN → out |
+
+**Two things are NOT done, and they matter:**
+
+- **None of it replicates.** Every part is decided locally, so another
+  player would see a solid man walking through walls. The whole POINT
+  of STO-CHARACTER-079 is what other people see, so the epic is not
+  really finished until that lands.
+- **Nothing acts on the line rule yet.** Combat still ignores
+  `is_on_my_line()`. The hard part — the rule — is done; wiring damage
+  to it is a smaller job.
+
+---
+
+## 🕷️ The spider's hands (2026-08-14) — written, mostly unbuilt
+
+Arms lengthened **3.82 m → 6.06 m** (built). The rest is
+EPI-ENEMIES-SPIDER-HANDS and is not:
+
+| # | |
+|---|---|
+| **052** | the arms feel around, and it knows what they touched |
+| **053** | the arms take hold of things |
+| **054** | it **learns to swing**, letting go and catching |
+
+054 is the walk story again (STO-ENEMIES-043) applied to arms: it
+starts from a crude swing that half-works and hill-climbs the timing.
+A spider that can haul itself across a ceiling cannot be stopped by a
+wall — it turns the whole room into floor.
+
+---
+
 ## 🧙 The Mage exists (2026-08-14)
 
 Your **fifth character**, purple, 4.6 m/s, 75 health — and he has
