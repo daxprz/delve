@@ -147,6 +147,11 @@ var _prev_pos := Vector3.INF
 var _vel_smooth := Vector3.ZERO
 var _limp := 0.0              # seconds of dangle left
 var _speed := 0.0
+## Stride length multiplier, tuned by the creature's own mind while it
+## walks (STO-ENEMIES-043). Starts at 1.0 — the gait it has always had,
+## which is the operator's "it already existed before the player was
+## there".
+var _gait_scale := 1.0
 
 
 func _ready() -> void:
@@ -312,6 +317,22 @@ func set_speed(speed: float) -> void:
 	_speed = speed
 
 
+## How long its stride is, as a multiple of the one it was born with
+## (STO-ENEMIES-043).
+##
+## This is the ONE dial its own mind is allowed to turn while it
+## practises. Deliberately one, and deliberately clamped: a creature
+## that could retune its whole body would sooner or later practise
+## itself into being unable to walk, and a spider stuck twitching on
+## the floor is a worse outcome than a spider that never improves.
+func set_gait_scale(scale: float) -> void:
+	_gait_scale = clampf(scale, 0.75, 1.35)
+
+
+func gait_scale() -> float:
+	return _gait_scale
+
+
 func _process(delta: float) -> void:
 	if _legs.is_empty():
 		return
@@ -356,7 +377,7 @@ func _process(delta: float) -> void:
 			var q: float = (p - stance) / (1.0 - stance)
 			swing = lerpf(-1.0, 1.0, q)           # reaching forward again
 			lift = sin(q * PI)                    # and clear of the ground
-		swing *= reach_scale
+		swing *= reach_scale * _gait_scale
 		lift *= lift_scale
 		var upper: Node3D = leg["upper"]
 		var lower: Node3D = leg["lower"]

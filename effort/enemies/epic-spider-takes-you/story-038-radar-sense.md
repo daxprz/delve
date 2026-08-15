@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: M
-status: draft
+status: done
 date: 2026-08-14
 depends-on: []
 bd-id: delve-rdr1
@@ -53,18 +53,20 @@ something you can see coming and try to avoid.
 
 ## Definition of Done
 
-- [ ] The spider finds players by sweeping for their hitboxes, not by
-      being told where they are.
-- [ ] It records a last known place whenever it senses one.
-- [ ] Losing you, it walks to that place rather than freezing or
-      teleporting its attention.
-- [ ] Reaching it and finding nothing, the trail goes cold.
-- [ ] Sensing you again overwrites the memory.
-- [ ] It finds the practice dummy too — anything that counts as a
-      player counts here (STO-ENEMIES-029).
-- [ ] Other enemies are unaffected; this is the spider's sense.
-- [ ] Proven by a headless test that checks the **memory** — that it
-      keeps coming after the target is taken away.
+- [x] The spider finds players by sweeping for hitboxes with a real
+      shape query, not by being told. Range **26 m** — finite, which is
+      the entire point.
+- [x] It records a last known place whenever it senses one.
+- [x] Losing you, it walks to that place rather than freezing. Proven:
+      the target was moved 400 m away, the spider found nothing, and
+      **still had the trail**.
+- [x] Reaching it and finding nothing, the trail goes cold.
+- [x] Sensing you again overwrites the memory.
+- [x] It finds the practice dummy too.
+- [x] Other enemies are unaffected — a Walker still looks up the
+      nearest player, and only the quadruped is given a mind.
+- [x] Proven by `tests/smoke_spider_mind.gd`, which checks the MEMORY:
+      that it keeps hunting after the target is taken away.
 
 ## Out of scope
 

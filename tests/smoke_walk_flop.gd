@@ -66,6 +66,15 @@ func _physics_process(_d: float) -> bool:
 				% [_ticks, spd, f, rad_to_deg(f)])
 	if _phase_done:
 		# Standing still now: the springs have to come to rest.
+		#
+		# The trail is wiped EVERY tick, not once. queue_free() is
+		# deferred, so a player freed this frame is still a body the
+		# spider's radar can feel on the next one — and one sweep is
+		# enough to restore the memory and send it walking again, which
+		# read here as "the idle never settles".
+		var m = _spider.call("mind")
+		if m != null:
+			m.call("trail_cold")
 		_settle_ticks += 1
 		if _settle_ticks < 150:
 			return false
@@ -97,6 +106,14 @@ func _physics_process(_d: float) -> bool:
 	_spider.velocity = Vector3.ZERO
 	for p in get_nodes_in_group("players"):
 		(p as Node).queue_free()
+	# Removing everyone no longer stops it. The spider has a MEMORY
+	# (STO-ENEMIES-038): lose it and it walks to the last place it knew
+	# of rather than freezing, which is the point of that story. Wipe
+	# the trail too, or this measures a creature correctly still hunting
+	# and calls its gait an idle wobble.
+	var mind = _spider.call("mind")
+	if mind != null:
+		mind.call("trail_cold")
 	_phase_done = true
 	return false
 

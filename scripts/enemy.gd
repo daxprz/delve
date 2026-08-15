@@ -132,6 +132,18 @@ var _skirting := false
 ## instead of each place probing the world again and disagreeing.
 var _block_normal := Vector3.ZERO
 
+# --- The mind (STO-ENEMIES-038 + EPI-ENEMIES-SPIDER-LEARNS) ----------
+#
+# Only the spider has one. Everything else in delve still finds you by
+# looking up the nearest player, which is fine for a Walker: a creature
+# that is meant to be a fight does not need to be clever.
+const MindScript := preload("res://scripts/spider_mind.gd")
+## How long a plan lasts before it picks another and scores the last.
+const PLAN_TIME := 5.0
+var _mind: Node = null
+var _plan_timer := 0.0
+var _plan_started_at := INF     # distance to prey when the plan began
+
 # --- Taking you away (EPI-ENEMIES-SPIDER-TAKES-YOU) -------------------
 #
 # Reach → catch → SMASH you into the ground → drag you along the floor →
@@ -223,6 +235,12 @@ func _ready() -> void:
 		_body.set("base_color", Color(EnemyKinds.get_def(kind)["colour"]))
 		_body.set("variation_seed", vseed)
 		add_child(_body)
+		# Only the spider gets a mind. It loads what it already knows
+		# about people the moment it exists — the operator asked for it
+		# to remember forever, and forever has to start before the first
+		# frame or the first minute of every session is amnesia.
+		_mind = MindScript.new(vseed)
+		_mind.load_memory()
 	else:
 		_body = BodyScript.new()
 		_body.name = "Body"
@@ -290,7 +308,7 @@ func _physics_process(delta: float) -> void:
 	# the way we WANT to go, not the way we are drifting, so a spider
 	# shoved sideways still judges the obstacle it is walking into
 	# (STO-ENEMIES-027).
-	var hunted := _nearest_player()
+	var hunted := _hunt(delta)
 	var want := Vector3.ZERO
 	if hunted != null:
 		want = hunted.global_position - global_position
@@ -392,22 +410,43 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 		velocity.z = move_toward(velocity.z, 0.0, FRICTION * delta)
 	else:
-		var target := _nearest_player()
+		var target := hunted
 		var target_name: String = target.name if target != null else "(none)"
 		if target_name != _last_target:
 			DebugOverlay.log("enemy/ai", self, "%s: target %s -> %s",
 					[name, _last_target if _last_target != "" else "(none)",
 					target_name])
 			_last_target = target_name
+		# Where to go. A creature with a mind aims where it thinks you
+		# are GOING, and when it cannot sense anybody it walks to the
+		# last place it knew of instead of standing still — which is the
+		# difference between hunting and being a magnet.
+		var goal := Vector3.INF
 		if target != null:
-			var to := target.global_position - global_position
+			goal = _mind.aim_at(target) if _mind != null \
+					else target.global_position
+		elif _mind != null and _mind.hunting_memory():
+			goal = _mind.last_known()
+			if _mind.reached_memory(global_position):
+				_mind.trail_cold()      # got there, nobody home
+				goal = Vector3.INF
+
+		if goal.is_finite():
+			var to := goal - global_position
 			to.y = 0.0
 			if to.length() > 0.6:  # stop when basically on top of them
 				var dir := to.normalized()
+				# Tried this way and got nowhere? Go a different way
+				# (STO-ENEMIES-044). Checked before the obstacle rules
+				# so a spider that has decided to try something else is
+				# not immediately steered back into what failed.
+				if _mind != null and _mind.is_detouring():
+					dir = (dir + Vector3.UP.cross(dir).normalized()
+							* _mind.detour_side() * 1.2).normalized()
 				# Too big to climb? Follow the face of it instead of
 				# grinding into it, so it hunts its way around rather
 				# than standing there pressed against the stone.
-				if _skirting:
+				elif _skirting:
 					dir = _around(dir, blocking.get("normal", Vector3.ZERO))
 				var spd := _move_speed()
 				velocity.x = dir.x * spd
@@ -427,7 +466,16 @@ func _physics_process(delta: float) -> void:
 			velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 			velocity.z = move_toward(velocity.z, 0.0, FRICTION * delta)
 
+	var was_at := global_position
+	# Whether it was TRYING to go anywhere, read BEFORE move_and_slide:
+	# this is intent, and intent is what makes "I got nowhere" mean
+	# something. Read afterwards it would be indistinguishable from
+	# having been stopped by a wall.
+	var trying := Vector2(velocity.x, velocity.z).length() > 0.05
 	move_and_slide()
+	# How far it ACTUALLY got — after the walls, not before them. This
+	# is what it practises against and what tells it it is stuck.
+	_think_about_moving(was_at.distance_to(global_position), delta, trying)
 
 	# Tell a four-legged body how fast it is actually travelling, so
 	# its legs step in time with the ground instead of running on the
@@ -449,6 +497,76 @@ func _physics_process(delta: float) -> void:
 		take_damage((fall_speed - FALL_SAFE_SPEED) * FALL_DAMAGE_SCALE)
 
 
+# --- The mind (STO-ENEMIES-038 + EPI-ENEMIES-SPIDER-LEARNS) ----------
+
+## Who this creature is going after this frame.
+##
+## A Walker looks up the nearest player and always will — it is meant
+## to be a fight, not a hunt. The spider **feels for you**, and if it
+## feels nothing it does not stop existing: it keeps whatever it last
+## knew, which the chase code then walks to.
+func _hunt(delta: float) -> Node3D:
+	if _mind == null:
+		return _nearest_player()
+
+	# Typed explicitly, not inferred: `_mind` is a plain Node (see mind()
+	# for why), so GDScript cannot work out what sense() returns and
+	# refuses to compile the whole file — which took rcon.gd down with
+	# it and would have taken the game down in play.
+	var found: Node3D = _mind.sense(get_world_3d(), global_position,
+			get_rid())
+
+	if found != null:
+		# Watch them. Everything it learns comes from this, and only
+		# from things anyone standing there could see.
+		_mind.watch(found, delta, global_position)
+
+		# Commit to a plan for a while, then judge it by whether it
+		# actually got closer, and pick again (STO-ENEMIES-047).
+		_plan_timer -= delta
+		if _plan_timer <= 0.0:
+			var dist := global_position.distance_to(found.global_position)
+			if _plan_started_at < INF:
+				_mind.note_outcome(String(found.name), _mind.plan(),
+						dist < _plan_started_at)
+			_mind.choose_plan(String(found.name))
+			_plan_timer = PLAN_TIME
+			_plan_started_at = dist
+	return found
+
+
+## Practising its walk and noticing when it is getting nowhere. Called
+## once per tick with how far it actually moved — distance covered, not
+## speed asked for, because only the first cannot be faked by flailing.
+func _think_about_moving(moved: float, delta: float, trying: bool) -> void:
+	if _mind == null:
+		return
+	# Only while it is actually trying to walk. A creature cannot
+	# practise walking while standing still — and letting it try meant a
+	# stationary spider changed its stride every few seconds forever, so
+	# its legs never came to rest and its idle read as a permanent
+	# fidget.
+	if trying:
+		_mind.practise(moved, delta)
+	_mind.note_progress(moved, delta, trying)
+	# A damaged creature moves differently, not merely slower
+	# (STO-ENEMIES-044). Handed to the body so the gait itself changes.
+	if _body != null and _body.has_method("set_gait_scale"):
+		_body.call("set_gait_scale", _mind.gait())
+
+
+## The spider's mind, for tests and the debug overlay. Null for
+## anything that has not got one.
+##
+## Typed as Node, not SpiderMind: a `class_name` is only resolvable
+## once the project has been rescanned, and a headless `-s` test run
+## does not rescan. Naming the class here made every script that
+## depends on this one fail to compile in exactly the situation where
+## it most needed to work.
+func mind() -> Node:
+	return _mind
+
+
 # --- Taking you away (EPI-ENEMIES-SPIDER-TAKES-YOU) -------------------
 
 ## The pincer arms, or null for anything that has none. Every step of
@@ -467,6 +585,24 @@ func _pincer_reach() -> float:
 	if arms == null or not arms.has_method("reach"):
 		return 0.0
 	return float(arms.call("reach"))
+
+
+## How close something has to be before it closes on them.
+##
+## Measured from the SURFACE of the creature, not its centre. Arm reach
+## alone is not enough: this spider is nearly two metres across, so
+## 55% of a 2.11 m reach came out at 1.16 m — shorter than the 1.33 m
+## its own body forces every victim to stand at. It walked up to people
+## and stood there, unable to grab anything, forever, and every check
+## except the one that mattered still passed.
+##
+## Rule 1 of this creature, applied properly: derive it from the
+## creature, INCLUDING the parts of the creature that get in the way.
+func _grab_range() -> float:
+	var body_radius := 0.4
+	if _collider != null and _collider.shape is CapsuleShape3D:
+		body_radius = (_collider.shape as CapsuleShape3D).radius
+	return body_radius + _pincer_reach() * GRAB_FRACTION
 
 
 ## Drive the whole reach → catch → smash → drag → spike sequence.
@@ -514,7 +650,7 @@ func _update_reach(arms: Node3D, _delta: float) -> bool:
 	arms.call("set_jaw", 1.0)      # jaws open as it reaches
 
 	# Close enough, and actually able to get at them? Take hold.
-	if to.length() <= reach * GRAB_FRACTION and _can_strike(prey, reach) \
+	if to.length() <= _grab_range() and _can_strike(prey, reach) \
 			and prey.has_method("grabbed_by"):
 		_seize(prey, arms)
 	return false

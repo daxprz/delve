@@ -266,6 +266,15 @@ func _physics_process(_d: float) -> bool:
 				# so the group is asked for directly.
 				for c in get_nodes_in_group("players"):
 					(c as Node).queue_free()
+				# Removing everyone is no longer enough to make it stop.
+				# The spider has a MEMORY now (STO-ENEMIES-038): lose it
+				# and it walks to the last place it knew of instead of
+				# freezing, which is the whole point of that story. So
+				# the trail has to be wiped too, or this phase measures a
+				# creature that is correctly still hunting.
+				var mind = _crawler.call("mind")
+				if mind != null:
+					mind.call("trail_cold")
 				return false
 			# Long enough for the limb springs to come to rest before
 			# the sample is taken. The limbs now lag the gait and
@@ -278,6 +287,12 @@ func _physics_process(_d: float) -> bool:
 			#
 			# The assertion is unchanged and the tolerance is untouched:
 			# it still has to end up genuinely still.
+			# Belt and braces: if it senses anything at all on a later
+			# tick it will start hunting again, so the trail is cleared
+			# right up to the sample rather than only once at the start.
+			var m2 = _crawler.call("mind")
+			if m2 != null:
+				m2.call("trail_cold")
 			if _ticks == 330:
 				_feet_a = _body.call("foot_positions")
 				return false
