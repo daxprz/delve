@@ -63,7 +63,7 @@ its hitbox is**.
 |---|------|------|-------|
 | 074 | mage-character | M | **First.** He exists and you can pick him. |
 | 075 | four-arms | M | Four procedural arms, not two. |
-| 076 | flatten-to-plane | L | Press E, pick the plane, become flat. |
+| 076 | flatten-to-plane | L | Press F, pick the plane, become flat. |
 | 077 | slip-through-gaps | L | The point of it: go where nobody can follow. |
 | 078 | platformer-view | L | His camera and controls become a flat game. |
 | 079 | flat-from-outside | M | What everyone ELSE sees. |
