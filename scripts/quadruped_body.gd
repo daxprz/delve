@@ -597,6 +597,57 @@ func body_height() -> float:
 	return _body_height()
 
 
+## Stop drawing the animated legs (STO-ENEMIES-055).
+##
+## Once real physics bones exist they are the picture, and the animated
+## chain becomes only the PLAN — where the gait would like the legs to
+## be. Leaving both visible draws the spider twice: a ghost walking
+## through walls inside a creature that cannot.
+func hide_limbs() -> void:
+	for leg in _legs:
+		_hide_meshes(leg["root"] as Node3D)
+
+
+func _hide_meshes(n: Node) -> void:
+	if n is MeshInstance3D:
+		(n as MeshInstance3D).visible = false
+	for c in n.get_children():
+		_hide_meshes(c)
+
+
+## Every limb segment, in WORLD space: {a, b, r} — the two ends of the
+## bone and its radius (STO-ENEMIES-055).
+##
+## Exists so that whether the spider is solid can be MEASURED rather
+## than judged by eye. Two previous attempts at limb collision were
+## reverted, and the thing that made the second one honest was having
+## numbers to compare — deepest limb inside a wall, and worst overlap
+## between two legs. This is what produces them.
+##
+## Every segment of every leg, not just the ends: the failed attempts
+## looked fine at the feet and were buried at the knee.
+func limb_segments() -> Array:
+	var out: Array = []
+	var r: float = _leg_th * 0.5
+	for leg in _legs:
+		var node: Node3D = leg["root"]
+		var names := ["Upper", "Lower", "Foot"]
+		for i in SEGMENTS:
+			node = node.get_node_or_null(String(names[i])) as Node3D
+			if node == null:
+				break
+			var seg_len: float = _leg_len * float(_fracs[i])
+			out.append({
+				"a": node.global_position,
+				"b": node.global_transform * Vector3(0.0, -seg_len, 0.0),
+				"r": r,
+				"leg": int(leg["pair"]),
+				"name": "%s/%s" % [String((leg["root"] as Node3D).name),
+						String(names[i])],
+			})
+	return out
+
+
 ## The pincer arms (STO-ENEMIES-030), or null on a body without them.
 func pincers() -> Node3D:
 	return _pincers

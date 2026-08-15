@@ -138,6 +138,8 @@ var _block_normal := Vector3.ZERO
 # looking up the nearest player, which is fine for a Walker: a creature
 # that is meant to be a fight does not need to be clever.
 const MindScript := preload("res://scripts/spider_mind.gd")
+const SolidScript := preload("res://scripts/spider_solid.gd")
+var _solid: Node3D
 ## How long a plan lasts before it picks another and scores the last.
 const PLAN_TIME := 5.0
 var _mind: Node = null
@@ -241,6 +243,13 @@ func _ready() -> void:
 		# frame or the first minute of every session is amnesia.
 		_mind = MindScript.new(vseed)
 		_mind.load_memory()
+		# Real physics limbs (STO-ENEMIES-055). Parented to the SCENE,
+		# not to the spider: bones that hang off the thing they are
+		# holding up would be carried along by it and could never push
+		# back against it.
+		_solid = SolidScript.new()
+		_solid.name = String(name) + "Solid"
+		call_deferred("_attach_solid")
 	else:
 		_body = BodyScript.new()
 		_body.name = "Body"
@@ -553,6 +562,33 @@ func _think_about_moving(moved: float, delta: float, trying: bool) -> void:
 	# (STO-ENEMIES-044). Handed to the body so the gait itself changes.
 	if _body != null and _body.has_method("set_gait_scale"):
 		_body.call("set_gait_scale", _mind.gait())
+
+
+## Hang the physics limbs in the world once everything exists.
+##
+## Deferred because the body builds its legs in its own _ready, and
+## measuring them a frame too early gives eight bones of length zero.
+func _attach_solid() -> void:
+	if _solid == null or _body == null:
+		return
+	var host := get_parent()
+	if host == null:
+		return
+	host.add_child(_solid)
+	if int(_solid.call("build", _body)) <= 0:
+		_solid.queue_free()
+		_solid = null
+		return
+	# The animated legs become the PLAN and stop being the picture: the
+	# physics bones are what you see now, so there is exactly one spider
+	# on screen rather than a ghost inside a body.
+	if _body.has_method("hide_limbs"):
+		_body.call("hide_limbs")
+
+
+## The physics limbs, or null on anything that has none.
+func solid() -> Node3D:
+	return _solid
 
 
 ## The spider's mind, for tests and the debug overlay. Null for

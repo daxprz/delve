@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: enemies
 size: L
-status: draft
+status: in-progress
 date: 2026-08-15
 depends-on: []
 bd-id: delve-ro1n
@@ -86,17 +86,71 @@ If it fails, it fails like the last two: **reverted, with the
 measurements written down.** Three failed approaches recorded honestly
 is worth more than one that half-works and is left in.
 
+## Attempt 3, part done (2026-08-15)
+
+Measured on the same course, against the spider as it was:
+
+| | before | after |
+|---|---|---|
+| worst overlap between two legs | 0.1524 m | **0.1113 m** — 27% better |
+| deepest limb inside a wall | 0.679 m | **0.677 m** — no change |
+| it travelled | 5.51 m | 5.67 m |
+| lowest the body rode | 2.54 m | 2.54 m |
+
+**Legs colliding with each other WORKS** — the thing the operator asked
+for twice. Bones were caught in the act, reporting contact with each
+other and with the ground.
+
+**Colliding with the world does NOT.** And the failure is understood
+rather than mysterious, which is new: a foot was caught **0.44 m inside
+a slab while reporting contact with that slab**. The collision is
+detected; the drive simply wins the argument. Weakening the drive from
+900 N/kg to 110 did not change it, so the remaining cause is something
+else — most likely that a fast-swinging foot enters on one tick and the
+solver cannot expel it before the drive re-commits.
+
+### Four wrong turns, each of which looked like "collision does not work"
+
+1. **The first measurement measured the PLAN.** The test read the
+   animated chain — identical in both builds — and reported the physics
+   version as a 1 mm improvement. The bones were never sampled at all.
+2. **The bones exploded 335 m across the map.** Adjacent segments of
+   one leg share a joint, so their capsules always overlap; the solver
+   shoved them apart harder every frame. Same-leg pairs are excepted
+   now; different legs still collide, which is the point.
+3. **`global_transform` was still a teleport.** Rotation was being SET,
+   which walks a rigid body through walls. It is spun with angular
+   velocity now.
+4. **Every collider was sideways.** The mesh was rotated to lie along
+   the bone; the capsule was not. So the line being measured and the
+   shape doing the colliding were at right angles.
+
+Also `LOST_DISTANCE`, a safety net meant to catch lost bones, fired
+constantly on bones that were merely **held back by a wall** — the
+exact situation the feature exists to create — and teleported them
+inside it.
+
+### What is left
+
+The world-collision half. The next thing to try is decoupling the
+drive from the contact: stop commanding a bone that is currently
+touching something, and let the solver own it until it is free.
+
 ## Definition of Done
 
-- [ ] Every part of the spider is a real physics body.
-- [ ] No part can be inside a wall. Measured as **less** limb inside a
-      slab than the animated version manages, not as "it looks better".
-- [ ] Legs collide with each other, measured as a self-overlap smaller
-      than the animated version's.
-- [ ] It **stands up** — it does not end up lying on the floor.
-- [ ] It still walks, and gets somewhere.
+- [x] Every leg segment is a real physics body — 12 bones.
+- [ ] The pincer arms are not yet bones. Legs only.
+- [ ] **No part can be inside a wall. NOT ACHIEVED** — 0.677 m vs
+      0.679 m. The one headline goal, and it is not met.
+- [x] **Legs collide with each other** — worst overlap 0.1524 m →
+      0.1113 m on the same course.
+- [x] It **stands up** — body rode 2.54 m, exactly as before.
+- [x] It still walks — 5.67 m, no worse than the 5.51 m it managed
+      before.
 - [ ] It can still be knocked over, and still get up.
-- [ ] The cost is measured and written down.
+- [ ] The cost is measured and written down. **Not measured.** 12 extra
+      rigid bodies per spider, with self-collision, and nobody has
+      timed it.
 - [ ] Proven by a headless test that compares against the CURRENT
       spider on the same course. "It collides" is not the check;
       "it collides MORE than before, and still walks" is.
