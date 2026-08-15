@@ -46,7 +46,12 @@ on its own; none of them needs the one after it.
 - [ ] The pincers hurt badly enough that being caught is frightening.
 - [ ] They can reach around and through things — cover is not safe.
 - [ ] There are sharp spikes somewhere in the world.
-- [ ] The spider can grab you, carry you, and leave you impaled.
+- [ ] The arms reach out for you as it closes in, so you get a warning.
+- [ ] The spider can grab you, smash you down, drag you, and leave you
+      impaled.
+- [ ] The screen dims while you are dragged and reddens on the spike,
+      and you can see the room throughout.
+- [ ] Impaled, you bleed on a clock you can only slow, never stop.
 - [ ] Impaled, you cannot free yourself, but a friend can free you.
 - [ ] If nobody comes in time, it eats you and leaves limbs behind.
 - [ ] Every one of the above proven by a headless test.
@@ -55,14 +60,22 @@ on its own; none of them needs the one after it.
 
 | # | Slug | Size | Notes |
 |---|------|------|-------|
-| 029 | practice-dummy | M | **First.** Nothing else is testable alone without it. |
-| 030 | pincer-arms | M | Procedural arms on the spider, long reach. |
+| 029 | practice-dummy | M | ✅ **First.** Nothing else is testable alone without it. |
+| 030 | pincer-arms | M | ✅ Procedural arms on the spider, long reach. |
+| 048 | arms-reach-for-you | M | The arms unfold and come for you. Your warning. |
 | 031 | pincers-hurt | S | A lot of damage. Being caught must scare you. |
 | 032 | pincers-reach | M | Around corners and through gaps. Cover is not safe. |
-| 033 | map-spikes | S | Something sharp to be put on. |
-| 034 | impale | L | The grab, the carry, the spike. The heart of the epic. |
+| 033 | map-spikes | M | Something sharp to be put on. |
+| 034 | impale | L | Catch, **smash**, drag, spike. The heart of the epic. |
+| 049 | screen-tells-you | M | Dim while dragged, red on the spike. You can always see. |
+| 050 | bleeding-timing-game | L | The clock, and the timing game that slows it. |
 | 035 | rescue | M | You cannot save yourself. A friend can. |
 | 036 | eaten | M | The timer runs out. Limbs are left over. |
+
+Stories **048, 049 and 050** were added on 2026-08-14 when the operator
+described the taking in full for the first time — the arms reaching out
+beforehand, the smash into the ground, the screen going dim and then
+red, and the bleeding you can only ever slow down.
 
 ## Out of scope
 

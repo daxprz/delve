@@ -18,6 +18,28 @@ The spider catches you in its pincers, hauls you off, and puts you on
 something sharp. You do not die. You are **stuck there, alive**, and it
 walks away.
 
+## The order it happens in (operator, 2026-08-14)
+
+1. The arms **reach out for you** as it closes in (STO-ENEMIES-048).
+2. It **catches** you.
+3. It **smashes you into the ground.**
+4. It **drags you along the ground**, and the screen goes dimmer. You
+   can look around the whole way (STO-ENEMIES-049).
+5. It **puts you on a stick** — a spike (STO-ENEMIES-033). The screen
+   turns red and you can still kinda see.
+6. You **bleed**, and play a timing game to slow it (STO-ENEMIES-050).
+
+### The smash
+
+> "then when it cathes you then it grabs you and smashes you into the
+> ground"
+
+Caught, you get **slammed down** before the dragging starts. It is a
+hard, fast, one-off hit, and it does three jobs at once: it hurts, it
+tells you instantly that this is not a normal attack, and it puts you on
+the floor — which is exactly where you need to be for the dragging,
+since you are dragged and never lifted.
+
 ## How you are carried (operator, 2026-08-14)
 
 **DRAGGED ALONG THE GROUND.** Not snatched off your feet, not lifted
@@ -39,7 +61,9 @@ This is the important part, and it was decided precisely:
 - **You can look around.** You are not frozen. You watch it leave and
   you watch your friends arrive.
 - **You can struggle** by mashing **Space**. Every mash takes **0.01**
-  off the timer before it comes back for you.
+  off the timer. ⚠️ *Which timer is not settled — see
+  STO-ENEMIES-050, which says struggling makes you bleed faster. Do not
+  build either until the operator confirms.*
 - **You can fight back** — but **sometimes your attacks do nothing.**
   You are pinned and flailing, not fighting properly.
 - **Movement attacks do nothing at all.** The Runner's dash, the pounce,
@@ -56,6 +80,8 @@ where it hurts.
 ## Definition of Done
 
 - [ ] The spider's pincers can catch a player (or the dummy).
+- [ ] Caught, it **smashes them into the ground** — one hard hit that
+      leaves them on the floor.
 - [ ] It **drags them along the ground** behind it — not lifted, not
       dangling. They stay on the floor.
 - [ ] They can see and turn the whole way there.

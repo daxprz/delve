@@ -172,26 +172,44 @@ None of this is built. It is the whole of
 
 | # | | |
 |---|---|---|
+| 048 | The arms reach out for you | your warning that it is coming |
 | 031 | The pincers hit hard | being caught must frighten you |
 | 032 | They reach around and through things | cover is not safe |
 | 033 | Sharp spikes exist in the world | something to be put on |
 | 034 | It grabs you and impales you | the heart of it |
+| 049 | The screen dims, then reddens | you always know which stage you are in |
+| 050 | You bleed, and a timing game slows it | the clock you cannot stop |
 | 035 | Your friends can pull you free | you cannot save yourself |
 | 036 | If nobody comes, it eats you | limbs are left over |
 
-### Being taken (operator, 2026-08-14)
+### Being taken, start to finish (operator, 2026-08-14)
 
-**How you are carried:** *dragged along the ground*. You stay on the
-floor and can still see and struggle. Not snatched into the air.
+Described in full for the first time on this date:
 
-**What you can do while impaled**, decided precisely:
+1. Its **arms reach out toward you** as it gets close — procedurally,
+   tracking wherever you actually are.
+2. It **catches you** and **smashes you into the ground**.
+3. It **drags you along the ground** and the **screen goes dimmer**. You
+   stay on the floor and you can **look around** the whole way. Never
+   lifted, never dangling.
+4. It **puts you on a stick** — a spike. The **screen turns red** and you
+   **can still kinda see**.
+5. You **bleed on a clock**. A **timing game** slows the bleeding down;
+   you play it to stretch out how long you last.
+
+**The rule underneath it:** everything you do to save yourself kills you
+faster. Fighting and struggling both make you bleed quicker. Only
+staying calm buys time, and only someone else can actually free you.
+
+**What you can still do while impaled:**
 
 - **You can look around.** Not frozen. You watch it leave and you watch
   your friends arrive.
 - **You can struggle** by mashing **Space** — each mash takes **0.01**
-  off the timer before it comes back.
+  off the timer. ⚠️ *Which timer is unsettled; see STO-ENEMIES-050.*
 - **You can fight back, but sometimes your attacks do nothing.** You are
-  pinned and flailing, not fighting properly.
+  pinned and flailing, not fighting properly. **Every attempt makes you
+  bleed faster.**
 - **Momentum attacks always do nothing.** The Runner's dash, the pounce
   — anything powered by how fast you are going. A player nailed to a
   spike has no speed. This is not a special case; it is delve's existing
