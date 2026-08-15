@@ -29,6 +29,10 @@ var _mid_blend := 0.0
 var _normal := Vector3.ZERO
 var _flat_pos := Vector3.ZERO
 var _flat_basis := Basis()
+var _fp_depth := 0.0
+## Where the camera sits while flat, so the slice can be checked to
+## straddle the plane rather than merely being thin somewhere.
+const CAM_DIST_GUESS := 22.0
 
 
 func _physics_process(_d: float) -> bool:
@@ -57,6 +61,7 @@ func _physics_process(_d: float) -> bool:
 			(_mage as Node3D).rotation.y = 0.0
 			_fp_pos = _cam.global_position
 			_fp_fov = _cam.fov
+			_fp_depth = _cam.far - _cam.near
 			print("[CAM] first person: %.2f m from him, fov %.0f"
 					% [_fp_pos.distance_to((_mage as Node3D).global_position),
 					_fp_fov])
@@ -113,6 +118,16 @@ func _physics_process(_d: float) -> bool:
 			_check(_cam.fov < _fp_fov * 0.5,
 					"the view narrows right down (%.0f -> %.0f), so the "
 					% [_fp_fov, _cam.fov] + "world goes flat like a 2D game")
+			# He should see HIS LINE and nothing else.
+			var depth: float = float(_mage.call("view_depth"))
+			print("[CAM] he can see a %.2f m deep slice of the world "
+					% depth + "(was %.0f m)" % _fp_depth)
+			_check(depth < 4.0,
+					"and he can only see the plane he is ON — a %.2f m "
+					% depth + "slice, not the whole world")
+			_check(_cam.near < CAM_DIST_GUESS and _cam.far > CAM_DIST_GUESS,
+					"with the slice centred on his own plane, not in front "
+					+ "of it or behind it")
 			_next("mouse")
 
 		"mouse":
@@ -160,6 +175,9 @@ func _physics_process(_d: float) -> bool:
 					% back)
 			_check(is_equal_approx(_cam.fov, _fp_fov),
 					"with its normal view angle back (%.0f)" % _cam.fov)
+			_check(float(_mage.call("view_depth")) > _fp_depth * 0.9,
+					"and he can see the whole world again (%.0f m)"
+					% float(_mage.call("view_depth")))
 			return _finish()
 	return false
 

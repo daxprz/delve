@@ -108,11 +108,15 @@ func _physics_process(_d: float) -> bool:
 				return false
 			if _ticks == 20:
 				_check(bool(_mage.call("is_flat")), "he goes flat")
-				Input.action_press("move_forward")
+				# D, not W. Flat, the controls are a platformer's
+				# (STO-CHARACTER-078) — D runs along the plane, which
+				# here points straight at the slot, and W does nothing
+				# at all by design.
+				Input.action_press("move_right")
 				return false
 			if _ticks < 170:
 				return false
-			Input.action_release("move_forward")
+			Input.action_release("move_right")
 			_flat_reached = (_mage as Node3D).global_position.z
 			print("[GAP] flat:  walked from z=%.2f to z=%.2f (wall at %.1f)"
 					% [START_Z, _flat_reached, WALL_Z])
@@ -135,11 +139,11 @@ func _physics_process(_d: float) -> bool:
 				(_mage as CharacterBody3D).velocity = Vector3.ZERO
 				return false
 			if _ticks == 10:
-				Input.action_press("move_forward")
+				Input.action_press("move_right")
 				return false
 			if _ticks < 160:
 				return false
-			Input.action_release("move_forward")
+			Input.action_release("move_right")
 			var z: float = (_mage as Node3D).global_position.z
 			print("[GAP] flat, at a wall with NO gap: reached z=%.2f" % z)
 			_check(bool(_mage.call("is_flat")),

@@ -186,6 +186,18 @@ const CAM_EYE_HEIGHT := 1.1
 ## rather than switching the camera to orthographic keeps it ONE
 ## continuous movement — no mode change, so nothing pops.
 const CAM_FLAT_FOV := 16.0
+## How deep a slice of the world he can see while flat
+## (STO-CHARACTER-081).
+##
+## The camera looks straight ALONG the plane normal, which means the
+## camera's depth axis and the plane's normal are the same line — so
+## clipping the view to a thin slab centred on the plane shows him his
+## own plane and nothing else. Geometry does the work; nothing has to
+## be hidden object by object, and it stays correct for things that
+## move.
+const CAM_SLAB := 1.8
+var _near_home := 0.05
+var _far_home := 4000.0
 var _cam_blend := 0.0            # 0 = first person, 1 = platformer
 var _cam_home := Transform3D()   # where the camera sits when solid
 var _cam_fp_local := Transform3D()  # where the mouse had it when he flattened
@@ -550,6 +562,8 @@ func _ready() -> void:
 	if camera != null:
 		_cam_home = camera.transform
 		_cam_fov_home = camera.fov
+		_near_home = camera.near
+		_far_home = camera.far
 
 	_collider_node = get_node_or_null("CollisionShape3D")
 	if _collider_node != null:
@@ -843,6 +857,34 @@ func _update_squash(delta: float) -> void:
 
 
 
+## Which way the walk keys should send him.
+##
+## Solid, this is the ordinary thing: W/S forward and back, A/D
+## strafing, all relative to where he is facing.
+##
+## Flat, it is a platformer, so the operator asked for platformer
+## controls (2026-08-14):
+##
+## > "press d to move forward and a to move backwards in the 2d mode"
+##
+## D and A become along-the-plane, which is left and right ON SCREEN
+## because the camera is side-on. W and S are dropped entirely rather
+## than being quietly reinterpreted — the direction they used to mean
+## is the one direction that no longer exists, and having them do
+## something else would be a worse surprise than having them do nothing.
+func _walk_dir(input_dir: Vector2) -> Vector3:
+	if not _flat:
+		return (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)) \
+				.normalized()
+	# Along the plane: perpendicular to its normal, level with the
+	# ground. Taken from the PLANE, not from him, so it cannot drift as
+	# he turns — and he cannot turn while flat anyway.
+	var along := Vector3.UP.cross(_plane_normal)
+	if along.length() < 0.001:
+		return Vector3.ZERO
+	return along.normalized() * input_dir.x
+
+
 ## Glide the camera between first person and the platformer view.
 ##
 ## The camera's own local transform is left alone the whole time and
@@ -863,6 +905,8 @@ func _update_camera(delta: float) -> void:
 		if not _cam_at_home:
 			camera.transform = _cam_fp_local
 			camera.fov = _cam_fov_home
+			camera.near = _near_home
+			camera.far = _far_home
 			_cam_at_home = true
 		return
 	_cam_at_home = false
@@ -883,6 +927,22 @@ func _update_camera(delta: float) -> void:
 	var t: float = _cam_blend * _cam_blend * (3.0 - 2.0 * _cam_blend)
 	camera.global_transform = fp.interpolate_with(plat, t)
 	camera.fov = lerpf(_cam_fov_home, CAM_FLAT_FOV, t)
+	# Close the view down to the slab as he arrives, so he ends up
+	# seeing his own plane and nothing else. Eased in with the rest of
+	# the glide rather than snapped, or the world would vanish in one
+	# frame partway through the turn.
+	var want_near: float = CAM_SIDE_DIST - CAM_SLAB * 0.5
+	var want_far: float = CAM_SIDE_DIST + CAM_SLAB * 0.5
+	camera.near = lerpf(_near_home, want_near, t)
+	camera.far = lerpf(_far_home, want_far, t)
+
+
+## How deep a slice of the world he can currently see. Small means he
+## is seeing only his own plane.
+func view_depth() -> float:
+	if camera == null:
+		return 0.0
+	return camera.far - camera.near
 
 
 ## How far round to the platformer view the camera is, 0..1.
@@ -1993,7 +2053,7 @@ func _physics_process(delta: float) -> void:
 	var spd := _sprint_speed if Input.is_action_pressed("sprint") else _speed
 	var input_dir := Input.get_vector(
 		"move_left", "move_right", "move_forward", "move_back")
-	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	var direction := _walk_dir(input_dir)
 
 	if _wall_lock > 0.0:
 		_wall_lock -= delta
@@ -2082,7 +2142,7 @@ func carried_enemy() -> Node:
 func _fly_move(delta: float) -> void:
 	var input_dir := Input.get_vector(
 		"move_left", "move_right", "move_forward", "move_back")
-	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	var direction := _walk_dir(input_dir)
 	if _fly_fuel > 0.0:
 		velocity.x = direction.x * FLY_H_SPEED
 		velocity.z = direction.z * FLY_H_SPEED
@@ -2397,7 +2457,7 @@ func do_dodge() -> void:
 		return
 	var input_dir := Input.get_vector(
 		"move_left", "move_right", "move_forward", "move_back")
-	var dir := (transform.basis * Vector3(input_dir.x, 0, input_dir.y))
+	var dir := _walk_dir(input_dir)
 	if dir.length() < 0.01:
 		dir = _aim_forward()
 	dir.y = 0.0

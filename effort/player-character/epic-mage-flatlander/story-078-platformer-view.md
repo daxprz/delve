@@ -90,10 +90,24 @@ instant it moved — breaking first person for **every character**
 because of a feature only the Mage has. It now writes it once, on
 arrival home.
 
-- [ ] Movement is not remapped. He still walks with W/S along the
-      plane, which reads as left/right on screen because the camera is
-      side-on — but A/D are simply blocked rather than being turned
-      into left/right. **Not ticked.**
+### Platformer controls (operator, 2026-08-14)
+
+> "press d to move forward and a to move backwards in the 2d mode"
+
+- [x] **D** moves him along the plane — measured **+4.60 m**.
+- [x] **A** moves him the OPPOSITE way — measured **−4.60 m**. Checked
+      as opposite, not merely as "also moved": a test of D alone would
+      pass for a Mage who only ever goes one way.
+- [x] **W and S do nothing at all** — measured 0.00 m. Dropped rather
+      than quietly reinterpreted: the direction they used to mean is
+      the one direction that no longer exists, and having them do
+      something *else* would be a worse surprise than having them do
+      nothing.
+- [x] The along-the-plane direction is taken from the PLANE, not from
+      him, so it cannot drift.
+- [x] The camera is more zoomed out at the operator's request: 11 m →
+      **22 m** out with a 16° view, so the visible height goes from
+      about 2.1 m — barely taller than the player — to about **6.2 m**.
 
 ## Out of scope
 

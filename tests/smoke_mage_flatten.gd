@@ -29,6 +29,9 @@ var _normal_at_press := Vector3.ZERO
 var _origin_at_press := Vector3.ZERO
 var _start := Vector3.ZERO
 var _along_plane := 0.0
+var _key_start := Vector3.ZERO
+var _d_moved := Vector3.ZERO
+var _a_moved := Vector3.ZERO
 
 
 func _spawn(id: String, nm: String) -> Node:
@@ -54,6 +57,15 @@ func _physics_process(_d: float) -> bool:
 				return false
 			if _ticks < 45:      # land on the floor first
 				return false
+			# The spider out of the way. It hunts by radar now
+			# (STO-ENEMIES-038) and will happily grab the Mage in the
+			# middle of a measurement — being taken suspends the plane,
+			# so the test would report the flattening as broken when the
+			# real story was that a monster carried the subject off.
+			for e in _main.get_node("Enemies").get_children():
+				(e as Node3D).global_position = Vector3(0.0, 0.0, 600.0)
+			for d in get_nodes_in_group("dummies"):
+				(d as Node3D).global_position = Vector3(0.0, 0.0, 620.0)
 			_check(bool(_mage.call("can_flatten")),
 					"the Mage can step into the second dimension")
 			_check(not bool(_runner.call("can_flatten")),
@@ -121,17 +133,23 @@ func _physics_process(_d: float) -> bool:
 			_next("walk_off")
 
 		"walk_off":
-			# Walking straight at the plane's normal: he must not move
-			# off it at all.
+			# Every walk key, including the ones that used to push him
+			# off the plane. Since the controls were remapped for the
+			# platformer (D forward, A back, W/S nothing) there is no
+			# longer any key that even ASKS to leave the plane — so this
+			# phase is now weak on its own, and the real weight is
+			# carried by "shoved" below, where something else pushes him.
 			if _ticks == 1:
 				Input.action_press("move_right")
+				Input.action_press("move_forward")
 				return false
 			if _ticks < 80:
 				return false
 			Input.action_release("move_right")
+			Input.action_release("move_forward")
 			var off: float = _mage.call("distance_off_plane",
 					(_mage as Node3D).global_position)
-			print("[FLAT] after 80 ticks walking AT the normal, %.4f m off "
+			print("[FLAT] after 80 ticks holding every walk key, %.4f m off "
 					% off + "the plane")
 			_check(off < 0.05,
 					"he cannot walk off his own plane (%.4f m)" % off)
@@ -170,11 +188,12 @@ func _physics_process(_d: float) -> bool:
 			# Mage frozen solid would pass everything above.
 			if _ticks == 1:
 				_start = (_mage as Node3D).global_position
-				Input.action_press("move_forward")
+				# D, not W: the controls are a platformer's now.
+				Input.action_press("move_right")
 				return false
 			if _ticks < 80:
 				return false
-			Input.action_release("move_forward")
+			Input.action_release("move_right")
 			var moved: Vector3 = (_mage as Node3D).global_position - _start
 			_along_plane = moved.length()
 			var off: float = _mage.call("distance_off_plane",
@@ -186,18 +205,78 @@ func _physics_process(_d: float) -> bool:
 					% _along_plane)
 			_check(off < 0.05,
 					"and never leaves it doing so (%.4f m)" % off)
+			_next("platformer_keys")
+
+		"platformer_keys":
+			# D forward, A backward, W/S nothing (operator, 2026-08-14).
+			if _ticks == 1:
+				# Put back where he flattened first. The previous phase
+				# walked him until he met something, so testing D from
+				# there measured a man against a wall and reported 0.00 m
+				# — which looks exactly like the key not working.
+				(_mage as Node3D).global_position = _origin_at_press
+				(_mage as CharacterBody3D).velocity = Vector3.ZERO
+				return false
+			if _ticks == 5:
+				_key_start = (_mage as Node3D).global_position
+				Input.action_press("move_right")
+				return false
+			if _ticks == 65:
+				Input.action_release("move_right")
+				_d_moved = (_mage as Node3D).global_position - _key_start
+				_key_start = (_mage as Node3D).global_position
+				Input.action_press("move_left")
+				return false
+			if _ticks == 125:
+				Input.action_release("move_left")
+				_a_moved = (_mage as Node3D).global_position - _key_start
+				_key_start = (_mage as Node3D).global_position
+				Input.action_press("move_forward")
+				return false
+			if _ticks < 185:
+				return false
+			Input.action_release("move_forward")
+			var w_moved: float = (_mage as Node3D).global_position \
+					.distance_to(_key_start)
+			var along := Vector3.UP.cross(_normal_at_press).normalized()
+			var d_along: float = _d_moved.dot(along)
+			var a_along: float = _a_moved.dot(along)
+			print("[FLAT] D moved %.2f m along the plane, A moved %.2f m, "
+					% [d_along, a_along] + "W moved %.2f m in total"
+					% w_moved)
+			_check(absf(d_along) > 1.0,
+					"D moves him along the plane (%.2f m)" % d_along)
+			# The comparison that matters: A must be the OTHER way, not
+			# merely "also some movement". A test of D alone would pass
+			# for a Mage who only ever goes one way.
+			_check(a_along * d_along < 0.0,
+					"and A moves him the OPPOSITE way (%.2f vs %.2f)"
+					% [a_along, d_along])
+			_check(w_moved < 0.5,
+					"while W does nothing — the direction it used to mean "
+					+ "is the one that no longer exists (%.2f m)" % w_moved)
 			_next("back")
 
 		"back":
 			# He comes back HERE, not where he went in.
+			#
+			# Walked away from the entrance FIRST. The key phase above
+			# resets him to where he flattened and then moves him equally
+			# each way, so without this he would be standing exactly at
+			# the entrance and "he came back somewhere else" would be
+			# testing nothing.
 			if _ticks == 1:
+				Input.action_press("move_right")
+				return false
+			if _ticks == 60:
+				Input.action_release("move_right")
 				_start = (_mage as Node3D).global_position
 				Input.action_press("mage_flatten")
 				return false
-			if _ticks == 2:
+			if _ticks == 61:
 				Input.action_release("mage_flatten")
 				return false
-			if _ticks < 20:
+			if _ticks < 90:
 				return false
 			_check(not bool(_mage.call("is_flat")),
 					"pressing again brings him back")
