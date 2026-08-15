@@ -34,7 +34,13 @@ const SEGMENT_FRACTIONS: Array = [0.45, 0.55]
 ## creature's own size for the reason given above, and large enough
 ## that the arms comfortably out-reach the body — an arm that cannot
 ## reach past the thing it is bolted to is decoration.
-const ARM_OF_HEIGHT := 0.85
+##
+## Raised from 0.85 on 2026-08-14 at the operator's request. It is not
+## only a look: these arms are meant to FEEL their way around and
+## eventually to swing the creature along by them, and both of those
+## need arms that reach much further than the body is tall. On a 3.12 m
+## spider this takes the reach from 3.82 m to about 6.1 m.
+const ARM_OF_HEIGHT := 1.35
 ## Thickness relative to length. Thicker than a leg: these are the
 ## heavy limbs, and they should look like they could lift you.
 const ARM_TH_OF_LEN := 0.075

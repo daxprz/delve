@@ -174,14 +174,18 @@ var _squash_now := 1.0           # 1 = solid, FLAT_THINNESS = flat
 ## How long the glide takes, each way. Long enough to watch.
 const CAM_GLIDE := 1.0
 ## How far to the side the camera ends up, and how high it looks from.
-const CAM_SIDE_DIST := 11.0
+## Raised from 11 m on 2026-08-14: the operator wanted to see more of
+## the level. With the narrow view angle below, the visible height goes
+## from about 2.1 m — barely taller than the player — to about 6.2 m,
+## which is a real platformer's worth of room.
+const CAM_SIDE_DIST := 22.0
 const CAM_EYE_HEIGHT := 1.1
 ## The view angle it narrows to. Small: a narrow angle from far away is
 ## very nearly a parallel projection, which is what takes the
 ## perspective out and makes everything look flat. Doing it this way
 ## rather than switching the camera to orthographic keeps it ONE
 ## continuous movement — no mode change, so nothing pops.
-const CAM_FLAT_FOV := 11.0
+const CAM_FLAT_FOV := 16.0
 var _cam_blend := 0.0            # 0 = first person, 1 = platformer
 var _cam_home := Transform3D()   # where the camera sits when solid
 var _cam_fp_local := Transform3D()  # where the mouse had it when he flattened
