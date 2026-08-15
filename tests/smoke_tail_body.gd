@@ -44,7 +44,12 @@ func _physics_process(_delta: float) -> bool:
 			_player.name = "1"
 			root.add_child(_player)
 			_tail = _player.get_node_or_null("Tail")
-			_body = _player.get_node_or_null("Body")
+			# Asked of the player: the body moved under a squash node for
+			# the Mage's flattening (STO-CHARACTER-079), so a path
+			# lookup finds nothing.
+			_body = _player.call("body_node") \
+					if _player.has_method("body_node") \
+					else _player.get_node_or_null("Body")
 			if _tail == null or _body == null:
 				_fail("Runner has no Tail/Body")
 				return _finish()

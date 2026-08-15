@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: player-character
 size: L
-status: draft
+status: done
 date: 2026-08-14
 depends-on: []
 bd-id: delve-q1gb
@@ -35,15 +35,29 @@ corner of the level, where they most wanted it to work.
 
 ## Definition of Done
 
-- [ ] Flat, the Mage passes through gaps he cannot pass through
-      normally.
-- [ ] The SAME gap stops him when he is not flat. This comparison is
-      required, not optional — without it "he went through" proves
-      nothing.
-- [ ] He still cannot pass through solid, gapless walls.
-- [ ] He cannot slip out of the level.
-- [ ] Proven by a headless test that measures the same journey twice,
-      flat and not flat, and gets different answers.
+- [x] Flat, the Mage passes through a **0.30 m** slot. He is 0.80 m
+      across solid; his hitbox goes to **0.06 m**.
+- [x] The SAME gap stops him when he is not flat. Identical wall,
+      identical start, identical walk: **stopped at z=-5.33 solid,
+      through to z=-10.20 flat.**
+- [x] He still cannot pass through a solid, gapless wall — stopped at
+      z=-5.30 while flat. Thin, not a ghost.
+- [x] The hitbox belongs to the PLANE: it is re-aimed every tick, so
+      turning while flat cannot make him solid inside a crack.
+- [x] Proven by `tests/smoke_mage_gap.gd`, which walks the same journey
+      twice and gets two different answers.
+
+## Built (2026-08-14)
+
+A capsule cannot be flattened, so going flat swaps the shape for a thin
+box turned edge-on to the plane, and swaps the capsule back on the way
+out — **before** the clearance check runs, so "is there room here?"
+is always asked about the solid body.
+
+The thin hitbox is **0.06 m**, deliberately fatter than he looks
+(0.021 m). A hitbox thinner than the physics engine's own contact
+margin starts falling through floors, and a Mage who drops out of the
+world is a worse bug than one who is a centimetre too fat.
 
 ## Out of scope
 

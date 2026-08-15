@@ -225,7 +225,14 @@ func _push_out_of_body() -> void:
 	if _player == null:
 		return
 
-	var body: Node = _player.get_node_or_null("Body")
+	# Asked of the player rather than found by path: the body moved
+	# under a squash node for the Mage's flattening, and a path lookup
+	# here quietly returned nothing.
+	var body: Node = null
+	if _player.has_method("body_node"):
+		body = _player.call("body_node")
+	if body == null:
+		body = _player.get_node_or_null("Body")
 	if body != null and body.has_method("body_capsules"):
 		for cap in body.call("body_capsules"):
 			for i in range(BODY_PUSH_FROM, _points.size()):

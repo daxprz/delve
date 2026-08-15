@@ -20,8 +20,9 @@ var _ticks := 0
 var _phase := "setup"
 var _p: Node
 var _grip := Vector3(0.0, 1.6, 0.0)
-var _head_sum := 0.0
-var _head_n := 0
+var _heads: Array = []
+var _hangs: Array = []
+var _grip_err := 0.0
 
 
 func _physics_process(_d: float) -> bool:
@@ -67,18 +68,32 @@ func _physics_process(_d: float) -> bool:
 		"dangle":
 			# Held up by the leg, everything else must fall.
 			_p.call("dragged_to", _grip)
-			if _ticks < 90:
-				return false
 			var leg_at: Vector3 = _p.call("held_leg_position")
 			var head_at: Vector3 = _p.call("limp_head_position")
-			var hang := leg_at.y - head_at.y
-			print("[LIMP] leg at y=%.2f, head at y=%.2f -> head hangs %.2f m "
-					% [leg_at.y, head_at.y, hang] + "below the grip")
-			_check(leg_at.distance_to(_grip) < 0.5,
-					"the held leg stays where the spider puts it (%.2f m off)"
-					% leg_at.distance_to(_grip))
+			# Only sampled once it has had time to fall. The first
+			# second is the body still arriving from the standing pose
+			# it was built in, and averaging that in measures the pose,
+			# not the hang.
+			if _ticks > 60:
+				_hangs.append(leg_at.y - head_at.y)
+				_grip_err = maxf(_grip_err, leg_at.distance_to(_grip))
+			if _ticks < 200:
+				return false
+			# Median again, for the third time in this file and for the
+			# same reason every time: a ragdoll on the end of a grip is
+			# chaotic, and ONE sample of a chaotic thing is not a
+			# measurement. Sampled across the whole hang, "does he dangle
+			# below the grip" has a stable answer; at any single instant
+			# it does not.
+			_hangs.sort()
+			var hang: float = float(_hangs[_hangs.size() / 2])
+			print("[LIMP] over %d samples the head hung a median %.2f m "
+					% [_hangs.size(), hang] + "below the held leg")
+			_check(_grip_err < 0.5,
+					"the held leg stays where the spider puts it (worst "
+					+ "%.2f m off)" % _grip_err)
 			_check(hang > 0.4,
-					"and the rest of the body hangs BELOW it — head %.2f m "
+					"and the rest of the body hangs BELOW it — median %.2f m "
 					% hang + "under the held leg")
 			_next("dragged_low")
 
@@ -94,17 +109,23 @@ func _physics_process(_d: float) -> bool:
 			_grip = Vector3(0.0, 0.35, 0.0)
 			_p.call("dragged_to", _grip)
 			var h: Vector3 = _p.call("limp_head_position")
-			_head_sum += h.y
-			_head_n += 1
+			_heads.append(h.y)
 			if _ticks < 90:
 				return false
-			var avg := _head_sum / float(_head_n)
-			print("[LIMP] dragged low: head averaged y=%.2f over %d samples "
-					% [avg, _head_n] + "(grip at y=%.2f)" % _grip.y)
-			_check(avg < _grip.y + 0.8,
-					"dragged at ground level, the body stays at or below "
-					+ "the grip (head averaged %.2f, grip %.2f)"
-					% [avg, _grip.y])
+			# The MEDIAN, not the mean. A ragdoll hauled by one leg
+			# throws its head about; one big swing drags an average
+			# anywhere, and an earlier version of this check passed at
+			# 1.14 and failed at 2.07 on the same code. The median asks
+			# the question that was actually meant: where is he MOST OF
+			# THE TIME?
+			_heads.sort()
+			var mid: float = float(_heads[_heads.size() / 2])
+			print("[LIMP] dragged low: head median y=%.2f over %d samples "
+					% [mid, _heads.size()] + "(grip at y=%.2f)" % _grip.y)
+			_check(mid < _grip.y + 0.8,
+					"dragged at ground level, the body is at or below the "
+					+ "grip most of the time (median %.2f, grip %.2f)"
+					% [mid, _grip.y])
 			_next("stand")
 
 		"stand":
@@ -125,8 +146,8 @@ func _physics_process(_d: float) -> bool:
 			print("[LIMP] ragdolls left in the world: %d" % leftovers)
 			_check(leftovers == 0,
 					"and no limp body is left behind (%d found)" % leftovers)
-			_check(_p.get_node_or_null("Body") != null
-					and (_p.get_node("Body") as Node3D).visible,
+			var real_body: Node3D = _p.call("body_node")
+			_check(real_body != null and real_body.visible,
 					"their real body is visible again")
 			return _finish()
 	return false

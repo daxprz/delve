@@ -254,6 +254,29 @@ func shove(dv: Vector3) -> void:
 		(_parts[pname] as RigidBody3D).linear_velocity += dv
 
 
+## Take the energy out of every part.
+##
+## Needed because dragging a body by one limb means TELEPORTING that
+## limb every frame, and a teleport is an infinite acceleration as far
+## as the solver is concerned: it pumps energy in, and a body that
+## should hang limp instead thrashes about and throws its head higher
+## than the hand holding it. Damping bleeds that back out, so a limp
+## body looks limp.
+## `keep_linear` is deliberately close to 1.0 and `keep_spin` is not.
+## Damping both hard was tried and was wrong: it takes gravity out
+## along with the thrashing, so a body held up by one leg never falls
+## and just hangs there with its head ABOVE the grip. Kill the
+## spinning; let it drop.
+func damp(keep_linear: float, keep_spin: float) -> void:
+	var kl := clampf(keep_linear, 0.0, 1.0)
+	var ks := clampf(keep_spin, 0.0, 1.0)
+	for n in _parts:
+		var rb: RigidBody3D = _parts[n]
+		if is_instance_valid(rb):
+			rb.linear_velocity *= kl
+			rb.angular_velocity *= ks
+
+
 func part(pname: String) -> RigidBody3D:
 	return _parts.get(pname)
 

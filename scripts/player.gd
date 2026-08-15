@@ -107,6 +107,15 @@ var _bled_out := 0
 const RagdollScript := preload("res://scripts/ragdoll.gd")
 ## Which parts count as "a leg it could have grabbed you by".
 const GRABBABLE_LEGS: Array = ["ShinL", "ShinR"]
+## How much of a dragged body's motion survives each tick.
+##
+## Falling is barely touched; spinning is cut hard. Damping both
+## equally was tried and took gravity out with the thrashing, so a body
+## held up by one leg never dropped and hung with its head above the
+## grip. See dragged_to() for why a dragged ragdoll gains energy at all.
+const DRAG_KEEP_FALL := 0.98
+const DRAG_KEEP_SPIN := 0.55
+
 
 var _limp: Node3D = null         # live ragdoll while being carried
 var _held_part := ""             # the leg the spider has hold of
@@ -156,8 +165,38 @@ const FLAT_THINNESS := 0.04
 ## slow, mesmerising warp is STO-CHARACTER-082 and is NOT built.
 const SQUASH_RATE := 9.0
 var _squash_now := 1.0           # 1 = solid, FLAT_THINNESS = flat
+
+# --- The platformer view (STO-CHARACTER-078) -------------------------
+#
+# Flat, the camera glides round to the side of him and the world goes
+# nearly parallel, so the whole scene reads as a 2D game rather than as
+# a 3D one seen from the side.
+## How long the glide takes, each way. Long enough to watch.
+const CAM_GLIDE := 1.0
+## How far to the side the camera ends up, and how high it looks from.
+const CAM_SIDE_DIST := 11.0
+const CAM_EYE_HEIGHT := 1.1
+## The view angle it narrows to. Small: a narrow angle from far away is
+## very nearly a parallel projection, which is what takes the
+## perspective out and makes everything look flat. Doing it this way
+## rather than switching the camera to orthographic keeps it ONE
+## continuous movement — no mode change, so nothing pops.
+const CAM_FLAT_FOV := 11.0
+var _cam_blend := 0.0            # 0 = first person, 1 = platformer
+var _cam_home := Transform3D()   # where the camera sits when solid
+var _cam_fp_local := Transform3D()  # where the mouse had it when he flattened
+var _cam_fov_home := 75.0
+var _cam_at_home := true
 ## How wide he is when solid — used to test whether a spot is clear.
 const BODY_CLEARANCE := 0.42
+## How thin his HITBOX gets (STO-CHARACTER-077). Bigger than what he
+## looks like: a hitbox thinner than the physics engine's own contact
+## margin starts tunnelling through floors, and a Mage who falls out of
+## the world is a worse bug than one who is a centimetre too fat.
+const FLAT_HITBOX := 0.06
+var _collider_node: CollisionShape3D
+var _solid_shape: Shape3D
+var _flat_shape: BoxShape3D
 
 var _screen_tint: ColorRect      # the dim / red overlay
 var _timing_bar: ColorRect
@@ -500,6 +539,28 @@ func _ready() -> void:
 	# him without touching the body's own animation or his collider
 	# (STO-CHARACTER-079). Everyone else gets one too and it stays the
 	# identity — one code path is worth more than a branch here.
+	# The collider, remembered so going flat can swap it for a thin one
+	# and put the round one back afterwards (STO-CHARACTER-077).
+	# Where the camera lives when he is solid, so the glide has a home
+	# to come back to.
+	if camera != null:
+		_cam_home = camera.transform
+		_cam_fov_home = camera.fov
+
+	_collider_node = get_node_or_null("CollisionShape3D")
+	if _collider_node != null:
+		_solid_shape = _collider_node.shape
+		_flat_shape = BoxShape3D.new()
+		var tall := 1.8
+		var wide := 0.8
+		if _solid_shape is CapsuleShape3D:
+			tall = (_solid_shape as CapsuleShape3D).height
+			wide = (_solid_shape as CapsuleShape3D).radius * 2.0
+		# Thin along X; the shape is then TURNED so that X lies along
+		# the plane normal. Derived from the capsule he already has, so
+		# a differently-built character keeps his own size.
+		_flat_shape.size = Vector3(FLAT_HITBOX, tall, wide)
+
 	_squash = Node3D.new()
 	_squash.name = "Squash"
 	add_child(_squash)
@@ -638,6 +699,21 @@ func _move() -> void:
 
 
 
+## This player's procedural body.
+##
+## NOT get_node("Body"). The body hangs off a squash node so the Mage
+## can be flattened (STO-CHARACTER-079), and every place that looked it
+## up by path silently started finding nothing — going limp, standing
+## up, and the tail's grip on the torso all broke at once, each in a
+## way that looked like a bug in itself rather than one moved node.
+func body_node() -> Node3D:
+	if _squash != null:
+		var b := _squash.get_node_or_null("Body")
+		if b != null:
+			return b as Node3D
+	return get_node_or_null("Body") as Node3D
+
+
 ## Can this character step into the second dimension at all?
 func can_flatten() -> bool:
 	return _can_flatten
@@ -681,6 +757,15 @@ func flatten() -> bool:
 	_flat = true
 	_last_clear = global_position
 	_have_clear = true
+	# Remember exactly where the mouse had left the camera, so the glide
+	# has somewhere honest to come back to.
+	if camera != null:
+		_cam_fp_local = camera.transform
+	# The hitbox goes thin too, or being flat would be a costume
+	# (STO-CHARACTER-077).
+	if _collider_node != null and _flat_shape != null:
+		_collider_node.shape = _flat_shape
+		_shape_to_plane()
 	DebugOverlay.log("player/combat", self,
 			"%s: FLAT on plane through %.1f,%.1f,%.1f normal %.2f,%.2f,%.2f",
 			[name, _plane_origin.x, _plane_origin.y, _plane_origin.z,
@@ -694,6 +779,13 @@ func unflatten() -> bool:
 	if not _flat:
 		return false
 	_flat = false
+	# The round body comes back FIRST, so the clearance check below is
+	# asking "is there room for the solid me?" — which is the only
+	# question that matters when deciding where he can safely reappear.
+	if _collider_node != null and _solid_shape != null:
+		_collider_node.shape = _solid_shape
+		_collider_node.transform = Transform3D(Basis(),
+				Vector3(0.0, _collider_offset_y(), 0.0))
 	# Coming back inside solid rock would trap him somewhere no amount
 	# of walking could fix, so if this spot is not clear he returns to
 	# the last one we watched him occupy safely.
@@ -728,7 +820,6 @@ func _update_squash(delta: float) -> void:
 		return
 	var want: float = FLAT_THINNESS if _flat else 1.0
 	_squash_now = move_toward(_squash_now, want, SQUASH_RATE * delta)
-	var body := _squash.get_node_or_null("Body")
 	if is_equal_approx(_squash_now, 1.0):
 		# Solid: hand the body straight back, with no scale on it at all.
 		_squash.transform = Transform3D()
@@ -746,6 +837,53 @@ func _update_squash(delta: float) -> void:
 			global_transform.basis.inverse() * flat_basis
 			* global_transform.basis, Vector3.ZERO)
 
+
+
+## Glide the camera between first person and the platformer view.
+##
+## The camera's own local transform is left alone the whole time and
+## only READ, so whatever the mouse last did to it survives the trip
+## and is exactly what he comes back to.
+func _update_camera(delta: float) -> void:
+	if camera == null:
+		return
+	var want: float = 1.0 if _flat else 0.0
+	_cam_blend = move_toward(_cam_blend, want, delta / CAM_GLIDE)
+	if _cam_blend <= 0.0001:
+		# All the way home: hand the camera back where it was, ONCE.
+		#
+		# Not every frame. Writing the camera transform on every solid
+		# frame would stamp on the mouse look the instant it moved —
+		# first person would simply stop working, for every character,
+		# because of a feature only the Mage has.
+		if not _cam_at_home:
+			camera.transform = _cam_fp_local
+			camera.fov = _cam_fov_home
+			_cam_at_home = true
+		return
+	_cam_at_home = false
+
+	# Where it would be if nothing had happened — using the pose the
+	# mouse had left it in when he flattened, so he comes back looking
+	# exactly where he was looking.
+	var fp := global_transform * _cam_fp_local
+	# ...and where a platformer would put it: out to the side, level
+	# with him, looking straight back along the plane normal.
+	var eye_at: Vector3 = global_position + Vector3.UP * CAM_EYE_HEIGHT
+	var side_at: Vector3 = eye_at + _plane_normal * CAM_SIDE_DIST
+	var plat := Transform3D().looking_at(eye_at - side_at, Vector3.UP)
+	plat.origin = side_at
+
+	# Eased, so it leaves and arrives gently instead of setting off at
+	# full speed — the difference between gliding and being dragged.
+	var t: float = _cam_blend * _cam_blend * (3.0 - 2.0 * _cam_blend)
+	camera.global_transform = fp.interpolate_with(plat, t)
+	camera.fov = lerpf(_cam_fov_home, CAM_FLAT_FOV, t)
+
+
+## How far round to the platformer view the camera is, 0..1.
+func camera_blend() -> float:
+	return _cam_blend
 
 
 ## How thin he looks right now. 1.0 is solid, small is flat.
@@ -781,6 +919,34 @@ func _hold_to_plane() -> void:
 	if _spot_is_clear(global_position):
 		_last_clear = global_position
 		_have_clear = true
+	_shape_to_plane()
+
+
+## Turn the thin hitbox so it lies flat ON the plane
+## (STO-CHARACTER-077).
+##
+## Done every tick rather than once, because he can still turn round
+## while flat — and the hitbox belongs to the PLANE, exactly like the
+## way he looks. A hitbox that rotated with him would let him face
+## along the gap he just slipped into and become solid again inside it.
+func _shape_to_plane() -> void:
+	if _collider_node == null or _flat_shape == null:
+		return
+	var n := _plane_normal
+	var up := Vector3.UP
+	var along := up.cross(n)
+	if along.length() < 0.001:
+		return
+	along = along.normalized()
+	# Columns: x thin (along the normal), y up, z across the plane.
+	var want := Basis(n, up, along)
+	_collider_node.transform = Transform3D(
+			global_transform.basis.inverse() * want,
+			Vector3(0.0, _collider_offset_y(), 0.0))
+
+
+func _collider_offset_y() -> float:
+	return 0.9
 
 
 # --- Being taken (STO-ENEMIES-034 / 049 / 050) -----------------------
@@ -806,7 +972,7 @@ func grabbed_by(spider: Node3D) -> bool:
 func go_limp(part: String) -> void:
 	if _limp != null:
 		return
-	var body := get_node_or_null("Body")
+	var body := body_node()
 	if body == null:
 		return
 	_held_part = part
@@ -832,7 +998,7 @@ func stand_up() -> void:
 		_limp.queue_free()
 	_limp = null
 	_held_part = ""
-	var body := get_node_or_null("Body")
+	var body := body_node()
 	if body != null:
 		body.visible = true
 	velocity = Vector3.ZERO
@@ -883,9 +1049,18 @@ func dragged_to(point: Vector3) -> void:
 	var leg = _limp.call("part", _held_part)
 	if leg is RigidBody3D:
 		var rb := leg as RigidBody3D
+		# The grip is absolute: the spider has hold of this limb and it
+		# goes where the spider puts it, full stop.
+		#
+		# Pulling it with a spring instead was tried and was worse — the
+		# body's weight dragged the held leg metres below the pincer, so
+		# the spider appeared to be holding nothing.
 		rb.global_position = point
 		rb.linear_velocity = Vector3.ZERO
 		rb.angular_velocity = Vector3.ZERO
+	# And bleed energy out of the rest, so limp looks limp.
+	if _limp.has_method("damp"):
+		_limp.call("damp", DRAG_KEEP_FALL, DRAG_KEEP_SPIN)
 	global_position = _limp.call("pelvis_position")
 
 
@@ -1579,6 +1754,7 @@ func _process(_delta: float) -> void:
 	_update_timing_ui()
 	# Flattening is a LOOK, so it belongs on the drawing tick.
 	_update_squash(_delta)
+	_update_camera(_delta)
 
 
 # --- The screen tells you what is happening (STO-ENEMIES-049) --------
@@ -1646,6 +1822,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_multiplayer_authority():
 		return
 	if event is InputEventMouseMotion:
+		# Flat, the mouse does NOTHING — not a constrained camera, not a
+		# camera that fights you. In a 2D game the view is not yours to
+		# point (STO-CHARACTER-078). Swallowing it here also stops him
+		# turning, which is what keeps the plane readable.
+		if _flat:
+			return
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 			rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
 			camera.rotate_x(-event.relative.y * MOUSE_SENSITIVITY)
