@@ -69,6 +69,7 @@ static var LIST := [
 		"arms": false, "double_jump": false, "wall_jump": false,
 		"wall_climb": false, "tail": false, "humanoid": true,
 		"four_arms": true,       # STO-CHARACTER-075
+		"flatten": true,         # STO-CHARACTER-076: steps into 2D
 		"abilities": [],
 	},
 ]

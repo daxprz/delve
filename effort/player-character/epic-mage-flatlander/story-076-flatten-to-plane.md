@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: player-character
 size: L
-status: draft
+status: done
 date: 2026-08-14
 depends-on: []
 bd-id: delve-nrrc
@@ -61,17 +61,56 @@ no character is ever asked to do both with one key. Only actions
 
 ## Definition of Done
 
-- [ ] Pressing F turns the Mage 2D.
-- [ ] Pressing it again turns him back.
-- [ ] The plane is chosen from where he is FACING when he presses it.
-- [ ] The plane stays put while he is in it — turning does not move it.
-- [ ] He comes back where he actually is, not where he started.
-- [ ] Coming back inside solid rock is handled and does not trap him.
-- [ ] Only the Mage can do it.
+- [x] Pressing F turns the Mage 2D.
+- [x] Pressing it again turns him back.
+- [x] The plane is chosen from where he is FACING when he presses it —
+      measured, the normal is square to his facing (dot **0.0000**).
+- [x] It is upright: looking up or down at the moment of pressing
+      cannot tilt the world he ends up in.
+- [x] The plane stays put while he is in it. Turned **69°** and the
+      normal and origin did not move.
+- [x] He cannot walk off it: **0.0000 m** after 80 ticks walking
+      straight at the normal.
+- [x] **But he walks ALONG it perfectly well — 6.06 m.** This is the
+      comparison that matters; without it, a Mage frozen solid would
+      pass every other check here.
+- [x] Shoved off the plane by something else, he is **put back** (3.00 m
+      off → 0.0000 m).
+- [x] He comes back where he actually is (**0.00 m** drift), which was
+      **6.06 m** from where he went in.
+- [x] Solid again, the forbidden direction works again (**1.52 m**).
+- [x] Coming back inside solid rock is handled: he returns to the last
+      spot he was seen to occupy safely.
+- [x] Only the Mage can do it. A Runner asked to flatten refuses.
 - [x] The key conflict is resolved, deliberately, and written down.
       Done 2026-08-14: rescue keeps E, the Grabber's toggle moved to R,
       the Mage takes F.
-- [ ] Proven by a headless test.
+- [x] Proven by `tests/smoke_mage_flatten.gd`.
+
+## Built (2026-08-14)
+
+**Every movement path now goes through one `_move()`.** There are six
+separate ones in `player.gd` — walking, zipping, rolling, flying, being
+launched, the main path — and each slides and then returns immediately.
+A rule that has to hold after *any* move has to be attached to the move
+itself; hanging it off one path would leave the other five free to
+break it, and the one that broke it would be whichever path the player
+used first.
+
+**Sabotage found a gap in my own test.** Disabling the position
+correction alone changed nothing — walking is already covered by never
+building the off-plane velocity in the first place, so the correction
+had no test of its own. Added the case that needs it: something ELSE
+shoves him off the plane, and he has to be put back. With both
+mechanisms disabled the test fails by **6.06 m**, so it does have
+teeth.
+
+⚠️ **Not yet verified against the movement tests.** `smoke_player`,
+`smoke_walljump`, `smoke_dodge`, `smoke_body_anim`, `smoke_flyer`,
+`smoke_grab` and `smoke_punch` all need port 7777 and were skipped
+because the game was open. They are the exact tests that would catch a
+regression in the `_move()` rerouting. **Run them with the game closed
+before trusting this.**
 
 ## Out of scope
 

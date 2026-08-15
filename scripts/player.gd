@@ -121,6 +121,33 @@ var _pull := 0.0                 # progress pulling somebody off
 var _rescuing: Node = null       # who WE are dragging to safety
 var _rescued_by: Node = null     # who is dragging US
 
+
+# --- Stepping into the second dimension (STO-CHARACTER-076) ----------
+#
+# Press F and the Mage flattens onto a plane. Everything IN FRONT of
+# him is that plane — he picks it by where he is facing at the moment he
+# presses, so aiming yourself before you flatten IS the skill.
+#
+# The plane is then FIXED. It does not follow him round as he turns,
+# because a plane that re-chose itself every frame would not be a place
+# — it would just be a strange way of walking.
+#
+# The plane is stored as an origin and a normal. The normal is his
+# sideways axis, flattened horizontal: the one direction he can no
+# longer move in.
+var _can_flatten := false
+var _flat := false
+var _plane_origin := Vector3.ZERO
+var _plane_normal := Vector3.RIGHT
+## The last place on the plane where he was demonstrably not inside
+## anything. Coming back out of 2D inside solid rock would trap him
+## somewhere no amount of walking could fix, so the way back is always
+## to a spot we have already seen him occupy safely.
+var _last_clear := Vector3.ZERO
+var _have_clear := false
+## How wide he is when solid — used to test whether a spot is clear.
+const BODY_CLEARANCE := 0.42
+
 var _screen_tint: ColorRect      # the dim / red overlay
 var _timing_bar: ColorRect
 var _timing_zone: ColorRect
@@ -439,6 +466,10 @@ func _ready() -> void:
 	_can_pounce = def.get("pounce", false)
 	_blind = bool(def.get("blind", false))
 	_has_gun = bool(def.get("gun", false))
+	# The Mage can step sideways into the second dimension
+	# (STO-CHARACTER-076). Read from the registry, so nothing else can
+	# acquire it by accident.
+	_can_flatten = bool(def.get("flatten", false))
 	_cam_base_y = camera.position.y
 	_abilities = def.get("abilities", [])
 	if is_multiplayer_authority():
@@ -567,6 +598,125 @@ func _remote_enemy_damage(amount: float) -> void:
 	if multiplayer.get_remote_sender_id() != 1:
 		return          # only the server decides that an enemy hit you
 	take_damage(amount)
+
+
+# --- The second dimension (STO-CHARACTER-076) ------------------------
+
+## Every move this character makes goes through here.
+##
+## There are seven separate movement paths in this script — walking,
+## zipping, rolling, flying, being launched — and each one slides and
+## then returns immediately. A rule that has to hold after ANY move
+## therefore has to be attached to the move itself. Hanging it off one
+## path would leave the other six free to break it, and the one that
+## broke it would be whichever path the player used first.
+func _move() -> void:
+	if _flat:
+		# Never push off the plane in the first place.
+		velocity -= _plane_normal * velocity.dot(_plane_normal)
+	move_and_slide()
+	if _flat:
+		_hold_to_plane()
+
+
+
+## Can this character step into the second dimension at all?
+func can_flatten() -> bool:
+	return _can_flatten
+
+
+func is_flat() -> bool:
+	return _flat
+
+
+## The one direction he cannot move in while flat.
+func plane_normal() -> Vector3:
+	return _plane_normal
+
+
+## A point the plane passes through.
+func plane_origin() -> Vector3:
+	return _plane_origin
+
+
+## How far off the plane a point is. Zero means on it.
+func distance_off_plane(p: Vector3) -> float:
+	return absf((p - _plane_origin).dot(_plane_normal))
+
+
+## Step into the second dimension. The plane is chosen HERE, from where
+## he is facing right now, and never changes again until he steps out.
+func flatten() -> bool:
+	if not _can_flatten or _flat or is_taken():
+		return false
+	# Everything IN FRONT of him is the plane, so the plane contains his
+	# forward direction and up. The direction it does NOT contain — the
+	# normal — is therefore his sideways axis, flattened horizontal so
+	# that looking up or down at the moment of pressing cannot tilt the
+	# world he ends up in.
+	var side: Vector3 = global_transform.basis.x
+	side.y = 0.0
+	if side.length() < 0.001:
+		side = Vector3.RIGHT
+	_plane_normal = side.normalized()
+	_plane_origin = global_position
+	_flat = true
+	_last_clear = global_position
+	_have_clear = true
+	DebugOverlay.log("player/combat", self,
+			"%s: FLAT on plane through %.1f,%.1f,%.1f normal %.2f,%.2f,%.2f",
+			[name, _plane_origin.x, _plane_origin.y, _plane_origin.z,
+			_plane_normal.x, _plane_normal.y, _plane_normal.z])
+	return true
+
+
+## Step back out, HERE — not where he went in. Travelling while flat is
+## the entire point; putting him back at the entrance would undo it.
+func unflatten() -> bool:
+	if not _flat:
+		return false
+	_flat = false
+	# Coming back inside solid rock would trap him somewhere no amount
+	# of walking could fix, so if this spot is not clear he returns to
+	# the last one we watched him occupy safely.
+	if not _spot_is_clear(global_position) and _have_clear:
+		DebugOverlay.log("player/combat", self,
+				"%s: came back inside something — put back %.2f m",
+				[name, global_position.distance_to(_last_clear)])
+		global_position = _last_clear
+	velocity = Vector3.ZERO
+	DebugOverlay.log("player/combat", self, "%s: solid again", [name])
+	return true
+
+
+## Is there room for a solid body at `p`?
+func _spot_is_clear(p: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	var shape := SphereShape3D.new()
+	shape.radius = BODY_CLEARANCE
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.transform = Transform3D(Basis(), p + Vector3.UP * 0.9)
+	q.exclude = [get_rid()]
+	for hit in space.intersect_shape(q, 8):
+		if hit.get("collider") is StaticBody3D:
+			return false
+	return true
+
+
+## Hold him on his plane. Called every tick while flat, before and
+## after the move: the velocity component along the normal is removed
+## so he never pushes off the plane, and any drift that physics
+## introduced anyway is projected back out.
+func _hold_to_plane() -> void:
+	velocity -= _plane_normal * velocity.dot(_plane_normal)
+	var off: float = (global_position - _plane_origin).dot(_plane_normal)
+	if absf(off) > 0.0001:
+		global_position -= _plane_normal * off
+	# Remember this spot if it is somewhere he could stand solid.
+	if _spot_is_clear(global_position):
+		_last_clear = global_position
+		_have_clear = true
 
 
 # --- Being taken (STO-ENEMIES-034 / 049 / 050) -----------------------
@@ -1454,6 +1604,13 @@ func _physics_process(delta: float) -> void:
 		_update_taken(delta)
 		return
 
+	# Step into or out of the second dimension (STO-CHARACTER-076).
+	if _can_flatten and Input.is_action_just_pressed("mage_flatten"):
+		if _flat:
+			unflatten()
+		else:
+			flatten()
+
 	# Rescuing somebody (STO-ENEMIES-035). Held, not tapped: they have
 	# to stand next to a spike and commit, which is the whole risk.
 	if Input.is_action_pressed("rescue"):
@@ -1476,11 +1633,11 @@ func _physics_process(delta: float) -> void:
 	# Grapple-zip and dodge-roll take over movement while they last.
 	if _zipping:
 		_zip_move(delta)
-		move_and_slide()
+		_move()
 		return
 	if _rolling:
 		_roll_move(delta)
-		move_and_slide()
+		_move()
 		return
 
 	# Flyer: carry a grabbed enemy, and fly while airborne (STO-CHARACTER-022+).
@@ -1494,7 +1651,7 @@ func _physics_process(delta: float) -> void:
 			_fly_fuel = minf(FLY_MAX_FUEL, _fly_fuel + FLY_RECHARGE * delta)
 		else:
 			_fly_move(delta)
-			move_and_slide()
+			_move()
 			return
 
 	if is_on_floor():
@@ -1530,7 +1687,7 @@ func _physics_process(delta: float) -> void:
 			camera.position.y = _cam_base_y - POUNCE_CROUCH * t
 			velocity.x = move_toward(velocity.x, 0.0, _speed * 3.0 * delta)
 			velocity.z = move_toward(velocity.z, 0.0, _speed * 3.0 * delta)
-			move_and_slide()
+			_move()
 			return
 		elif _pounce_charge > 0.0:
 			var t := clampf(_pounce_charge / POUNCE_MAX_CHARGE, 0.0, 1.0)
@@ -1598,7 +1755,7 @@ func _physics_process(delta: float) -> void:
 		_dash_time -= delta
 		velocity.x = _dash_dir.x * DASH_SPEED
 		velocity.z = _dash_dir.z * DASH_SPEED
-		move_and_slide()
+		_move()
 		return
 
 	# While an arm is reeling us in, walk input must not damp the pull
@@ -1654,7 +1811,7 @@ func _physics_process(delta: float) -> void:
 	# a blocked push reads as ~0 afterwards. Keep what we intended, so
 	# the push reaction knows how hard we were actually shoving.
 	_pre_move_velocity = velocity
-	move_and_slide()
+	_move()
 
 	_push_rigid_bodies()
 
