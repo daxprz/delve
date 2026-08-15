@@ -5,6 +5,20 @@ and the suite is green (**53 pass, 0 fail**, 24 skipped for the port).
 
 ---
 
+## 🕷️ The spider, all in one place
+
+`effort/enemies/design-giant-spider.md` (**DES-ENEMIES-002**) is now the
+official record of this creature — everything asked for across three
+epics and twenty-odd stories, gathered into one document: what it is
+for, its body and gait, the floppiness, the pincers, what it will do to
+you, its mind, and the rules it is built on. It marks each part ✅ built,
+📝 written-not-built, or ❌ tried-and-failed, and keeps the operator's
+own words for the decisions they made.
+
+Read that first next time. This file is only the state of play.
+
+---
+
 ## 🎯 Start here next time
 
 **Build STO-ENEMIES-038 — the radar with memory.** It is the
