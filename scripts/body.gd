@@ -125,7 +125,7 @@ var _buckle_amount := 1.0
 
 
 func _ready() -> void:
-	_player = get_parent()
+	_player = _find_owner()
 	_is_local = use_fade and _player != null and _player.is_multiplayer_authority()
 	if _player != null:
 		_prev_pos = _player.global_position
@@ -148,6 +148,23 @@ func _ready() -> void:
 			" (fade shader)" if _is_local else "",
 			"" if build_human_arms else " (no human arms)",
 			" (variation seed %d)" % variation_seed if variation_seed != 0 else ""])
+
+
+## The character this body belongs to.
+##
+## NOT get_parent(). The Mage's body hangs off a squash node so it can
+## be flattened (STO-CHARACTER-079), and taking the immediate parent
+## silently made that squash node "the player" — so this body animated
+## against a frame that was itself being flattened, and its legs stopped
+## being solved at all. Walk up until we find something that actually
+## moves, and nesting can never break this again.
+func _find_owner() -> Node:
+	var n: Node = get_parent()
+	while n != null:
+		if n is CharacterBody3D:
+			return n
+		n = n.get_parent()
+	return get_parent()
 
 
 func _make_material() -> Material:
@@ -390,9 +407,13 @@ func _process(delta: float) -> void:
 		_foot_pos[k] = _clamp_to_hip(_foot_pos[k], hip_ground, MAX_STEP)
 		_solve_leg(k, hip_world, _foot_pos[k], forward)
 		# Keep the foot flat on the ground, toe pointing forward.
-		var foot_joint: Node3D = _feet[k]
-		foot_joint.global_transform = Transform3D(foot_basis,
-				_foot_pos[k] + Vector3.UP * FOOT_RAISE)
+		# Through _place, like the rest of the leg. This one was missed
+		# first time round and it was the ONLY thing still opting out of
+		# the squash — the Mage came out flat everywhere except two feet
+		# left standing at full width, which is exactly the kind of
+		# almost-working that looks like the whole thing is broken.
+		_place(_feet[k] as Node3D, Transform3D(foot_basis,
+				_foot_pos[k] + Vector3.UP * FOOT_RAISE))
 
 	# Arms swing opposite the legs (characters that have human arms).
 	var sw := sin(_walk_phase)
@@ -416,6 +437,34 @@ func _clamp_to_hip(p: Vector3, center: Vector3, maxd: float) -> Vector3:
 
 
 ## 2-bone IK: rotate thigh + shin so the foot reaches `foot`, knee forward.
+## Put a leg bone where the IK says, WITHOUT escaping this body's own
+## frame (STO-CHARACTER-079).
+##
+## The legs are the one part of this body placed in world space, and
+## `global_transform = ...` overrides the whole parent chain — so any
+## transform on an ancestor is cancelled for that bone alone. When the
+## Mage's body was hung off a squash node so it could be flattened, he
+## came out flat from the waist up and completely solid from the waist
+## down, because his legs were opting out of the squash every frame.
+##
+## The IK works in the character's frame, so the answer is to express
+## its result RELATIVE TO THE CHARACTER and let the ancestors do
+## whatever they like to it. With no squash this is identical to the old
+## behaviour; with one, the legs get flattened along with everything
+## else and nothing here has to know that a squash exists.
+func _place(bone: Node3D, want_in_owner_frame: Transform3D) -> void:
+	if _player == null:
+		bone.global_transform = want_in_owner_frame
+		return
+	# Where the bone should sit relative to this body...
+	var rel: Transform3D = _player.global_transform.affine_inverse() \
+			* want_in_owner_frame
+	# ...and where its own parent already sits relative to this body.
+	var parent_rel: Transform3D = global_transform.affine_inverse() \
+			* (bone.get_parent() as Node3D).global_transform
+	bone.transform = parent_rel.affine_inverse() * rel
+
+
 func _solve_leg(k: int, hip: Vector3, foot: Vector3, forward: Vector3) -> void:
 	var thigh: Node3D = _thighs[k]
 	var shin: Node3D = _shins[k]
@@ -429,8 +478,8 @@ func _solve_leg(k: int, hip: Vector3, foot: Vector3, forward: Vector3) -> void:
 	var bn := forward - dir * forward.dot(dir)
 	bn = bn.normalized() if bn.length() > 0.001 else Vector3.FORWARD
 	var knee := hip + dir * a + bn * h
-	thigh.global_transform = Transform3D(_aim_basis(hip, knee, forward), hip)
-	shin.global_transform = Transform3D(_aim_basis(knee, foot, forward), knee)
+	_place(thigh, Transform3D(_aim_basis(hip, knee, forward), hip))
+	_place(shin, Transform3D(_aim_basis(knee, foot, forward), knee))
 
 
 ## Basis whose local -Y (the bone's down axis) points from `from` to `to`.

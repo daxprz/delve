@@ -145,6 +145,17 @@ var _plane_normal := Vector3.RIGHT
 ## to a spot we have already seen him occupy safely.
 var _last_clear := Vector3.ZERO
 var _have_clear := false
+## The node his body hangs off, so flattening squashes what you SEE
+## without touching the collider or the animation.
+var _squash: Node3D
+## How thin he gets. Not zero: a body of exactly no thickness renders
+## as nothing at all from one side, and "he vanished" is a much worse
+## thing to see than "he went very thin".
+const FLAT_THINNESS := 0.04
+## How fast the squash happens. This is a placeholder — the real,
+## slow, mesmerising warp is STO-CHARACTER-082 and is NOT built.
+const SQUASH_RATE := 9.0
+var _squash_now := 1.0           # 1 = solid, FLAT_THINNESS = flat
 ## How wide he is when solid — used to test whether a spot is clear.
 const BODY_CLEARANCE := 0.42
 
@@ -485,7 +496,14 @@ func _ready() -> void:
 	body.set("ears", bool(def.get("ears", false)))
 	# The Mage has four arms (STO-CHARACTER-075).
 	body.set("four_arms", bool(def.get("four_arms", false)))
-	add_child(body)
+	# The Mage's body hangs off a squash node, so going 2D can flatten
+	# him without touching the body's own animation or his collider
+	# (STO-CHARACTER-079). Everyone else gets one too and it stays the
+	# identity — one code path is worth more than a branch here.
+	_squash = Node3D.new()
+	_squash.name = "Squash"
+	add_child(_squash)
+	_squash.add_child(body)
 
 	# Only the Grabber builds the mechanical arms (STO-CHARACTER-001).
 	if _has_arms:
@@ -687,6 +705,52 @@ func unflatten() -> bool:
 	velocity = Vector3.ZERO
 	DebugOverlay.log("player/combat", self, "%s: solid again", [name])
 	return true
+
+
+## Squash what you SEE onto the plane (STO-CHARACTER-079).
+##
+## From outside, he has to look like he has become 2D. Done as a
+## world-space squash along the plane normal, applied ON TOP of whatever
+## the body is already doing, so he keeps facing where he faces and
+## keeps animating — he is a flattened man, not a differently-posed one.
+##
+## The maths is one line of geometry: flattening space along a unit
+## normal n is  S = I - (1-t)·n⊗n,  which leaves everything
+## perpendicular to n untouched and multiplies everything along n by t.
+## Column j of that matrix is  e_j - (1-t)·n_j·n,  which is all the
+## code below is.
+##
+## Deliberately NOT applied to the collider. He is thin to look at; what
+## he can squeeze through is STO-CHARACTER-077 and is a separate story
+## with a separate rule.
+func _update_squash(delta: float) -> void:
+	if _squash == null:
+		return
+	var want: float = FLAT_THINNESS if _flat else 1.0
+	_squash_now = move_toward(_squash_now, want, SQUASH_RATE * delta)
+	var body := _squash.get_node_or_null("Body")
+	if is_equal_approx(_squash_now, 1.0):
+		# Solid: hand the body straight back, with no scale on it at all.
+		_squash.transform = Transform3D()
+		return
+	var n := _plane_normal
+	var k := 1.0 - _squash_now
+	var flat_basis := Basis(
+			Vector3(1.0, 0.0, 0.0) - n * (k * n.x),
+			Vector3(0.0, 1.0, 0.0) - n * (k * n.y),
+			Vector3(0.0, 0.0, 1.0) - n * (k * n.z))
+	# Applied in WORLD space, then brought back into our own frame, so
+	# turning round does not rotate the squash with him. The plane is a
+	# place; the flattening belongs to the plane, not to his body.
+	_squash.transform = Transform3D(
+			global_transform.basis.inverse() * flat_basis
+			* global_transform.basis, Vector3.ZERO)
+
+
+
+## How thin he looks right now. 1.0 is solid, small is flat.
+func thinness() -> float:
+	return _squash_now
 
 
 ## Is there room for a solid body at `p`?
@@ -1513,6 +1577,8 @@ func _process(_delta: float) -> void:
 	# life would be a bug you could not do anything about.
 	_update_screen_tint()
 	_update_timing_ui()
+	# Flattening is a LOOK, so it belongs on the drawing tick.
+	_update_squash(_delta)
 
 
 # --- The screen tells you what is happening (STO-ENEMIES-049) --------

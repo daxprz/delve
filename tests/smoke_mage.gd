@@ -171,7 +171,9 @@ func _physics_process(_d: float) -> bool:
 
 
 func _count(prefix: String) -> int:
-	var body := _mage.get_node_or_null("Body")
+	var body := _mage.get_node_or_null("Squash/Body")
+	if body == null:
+		body = _mage.get_node_or_null("Body")
 	if body == null: return -1
 	var f: Array = []
 	_collect_named(body, prefix, f)
@@ -187,7 +189,9 @@ func _count(prefix: String) -> int:
 ## of this test did that and reported four welded arms on a body whose
 ## arms were swinging 0.6 radians.
 func _swing(which: String) -> float:
-	var body := _mage.get_node_or_null("Body")
+	var body := _mage.get_node_or_null("Squash/Body")
+	if body == null:
+		body = _mage.get_node_or_null("Body")
 	if body == null:
 		return 0.0
 	var found: Array = []
@@ -210,7 +214,12 @@ func _collect_named(n: Node, prefix: String, into: Array) -> void:
 ## Every hand on a body, upper pair and lower pair alike.
 func _hands(who: Node) -> Array:
 	var found: Array = []
-	var body := who.get_node_or_null("Body")
+	# Under Squash now, for the Mage's flattening (STO-CHARACTER-079).
+	# Both paths are tried so this keeps working whichever way the body
+	# is hung.
+	var body := who.get_node_or_null("Squash/Body")
+	if body == null:
+		body = who.get_node_or_null("Body")
 	if body == null:
 		return found
 	_collect(body, found)
