@@ -84,6 +84,38 @@ var _limp := 0.0
 var _aim := Vector3.ZERO
 var _aiming := false
 
+# --- Feeling around (STO-ENEMIES-052) --------------------------------
+#
+# With nobody near, the arms stop idling and start SEARCHING: slow,
+# wide, out of step with each other, reaching into a space and drawing
+# back out of it.
+#
+# The operator asked for this to look creepier, and slow is the whole
+# trick. Fast reads as frantic; slow reads as deliberate, and a thing
+# taking its time is a thing that expects to find you.
+## How fast the search sweeps. A fraction of the idle weave rate.
+const SEARCH_RATE := 0.34
+## How far it sweeps, side to side and up and down. Much wider than the
+## idle weave, so it is plainly hunting rather than fidgeting.
+const SEARCH_YAW := 0.85
+const SEARCH_PITCH := 0.55
+## The two arms search on DIFFERENT rhythms. Two arms in sympathy read
+## as one machine; two arms out of step read as two hands.
+const SEARCH_DESYNC := 1.37
+## How far the arms reach out and draw back while searching, and how
+## slowly. The pause at full stretch is the worst moment, so the reach
+## spends longer at its extremes than in between.
+const SEARCH_REACH_RATE := 0.21
+const SEARCH_REACH_MIN := 0.25
+const SEARCH_REACH_MAX := 1.0
+## How often a tip's path is checked against the world.
+const FEEL_MEMORY := 12
+
+var _searching := false
+var _search_phase := 0.0
+var _tip_was: Array = []          # last frame's tip positions
+var _felt: Array = []             # what the tips have touched lately
+
 ## How fast the arms swing onto a target. Deliberately unhurried: the
 ## reach IS the warning, and a warning you cannot react to is not a
 ## warning. It also keeps the arms looking heavy rather than servo-driven.
@@ -204,6 +236,13 @@ func _process(delta: float) -> void:
 	if _arms.is_empty():
 		return
 	_phase += delta * WEAVE_RATE
+	if _searching:
+		_search_phase += delta * SEARCH_RATE
+		# Reach breathes in and out, slowly, and lingers at the ends.
+		var breathe: float = sin(_search_phase * SEARCH_REACH_RATE * TAU)
+		breathe = signf(breathe) * pow(absf(breathe), 0.55)
+		_reach_target = lerpf(SEARCH_REACH_MIN, SEARCH_REACH_MAX,
+				0.5 + 0.5 * breathe)
 	if _limp > 0.0:
 		_limp -= delta
 	# Ease onto the reach rather than snapping to it, so the arms unfold
@@ -226,6 +265,13 @@ func _process(delta: float) -> void:
 		var off: float = 0.0 if i == 0 else PI * 0.6
 		var sway: float = sin(_phase + off)
 		var rise: float = sin(_phase * 1.3 + off)
+		if _searching:
+			# A slow, wide sweep replaces the idle twitch, and each arm
+			# runs on its own rhythm.
+			var mine: float = _search_phase * (1.0 if i == 0 else
+					SEARCH_DESYNC) + off
+			sway = sin(mine) * (SEARCH_YAW / WEAVE_YAW)
+			rise = sin(mine * 0.73 + 1.1) * (SEARCH_PITCH / WEAVE_PITCH)
 
 		var upper: Node3D = arm["upper"]
 		var fore: Node3D = arm["fore"]
@@ -277,6 +323,73 @@ func _process(delta: float) -> void:
 			# should be visible from across the room that it cannot.
 			var open: float = lerpf(_jaw, 0.75, limp01)
 			jaw.rotation.x = (1.0 if j == 0 else -1.0) * JAW_OPEN * open
+
+
+## Sweep for whatever is nearby, and remember what the tips touch.
+##
+## Called by the creature each frame while searching. The check is the
+## path a tip actually travelled since last frame, not a ray fired
+## wherever the arm happens to point: a tip that swept THROUGH something
+## has felt it, and a tip that is merely aimed at a distant wall has
+## not.
+func feel(world: World3D, exclude: RID) -> void:
+	if not _searching or _arms.is_empty():
+		return
+	while _tip_was.size() < _arms.size():
+		_tip_was.append(tip_position(_tip_was.size()))
+	for i in _arms.size():
+		var now: Vector3 = tip_position(i)
+		var was: Vector3 = _tip_was[i]
+		_tip_was[i] = now
+		if was.distance_to(now) < 0.001:
+			continue
+		var q := PhysicsRayQueryParameters3D.create(was, now)
+		q.exclude = [exclude]
+		# A ray that STARTS inside a body reports nothing by default,
+		# and a tip creeping through a crate spends hundreds of frames
+		# inside it and one frame crossing the surface. Without this the
+		# arms swept straight through a block and felt absolutely
+		# nothing — which looks exactly like a sense that does not work.
+		q.hit_from_inside = true
+		var hit := world.direct_space_state.intersect_ray(q)
+		if hit.is_empty():
+			continue
+		var what = hit.get("collider")
+		_felt.append({
+			"what": what,
+			"name": String((what as Node).name) if what is Node else "?",
+			"where": hit["position"],
+			"arm": i,
+		})
+		while _felt.size() > FEEL_MEMORY:
+			_felt.remove_at(0)
+
+
+## Start or stop feeling around.
+func set_searching(on: bool) -> void:
+	if on == _searching:
+		return
+	_searching = on
+	if not on:
+		_felt.clear()
+		_tip_was.clear()
+
+
+func is_searching() -> bool:
+	return _searching
+
+
+## What the tips have touched lately, most recent last.
+func felt() -> Array:
+	return _felt
+
+
+## Has it felt this particular thing?
+func has_felt(who: Node) -> bool:
+	for f in _felt:
+		if f["what"] == who:
+			return true
+	return false
 
 
 # --- What the rest of the game asks of them --------------------------

@@ -50,7 +50,7 @@ grip while the other searches for the next.
 | # | Slug | Size | Notes |
 |---|------|------|-------|
 | — | longer arms | S | ✅ Done. 3.82 m → 6.06 m reach. |
-| 052 | feel-around | M | The arms sweep and probe what is near. |
+| 052 | feel-around | M | ✅ The arms sweep and probe what is near. |
 | 053 | grab-things | L | They take hold of objects, not just people. |
 | 054 | learn-to-swing | L | Let go, catch, move along by the arms — and **learn** it. |
 
@@ -60,7 +60,7 @@ and it has to grab before letting go means anything.
 ## Definition of Done
 
 - [x] The arms are long enough to reach well past the body.
-- [ ] They feel around, and what they touch is something the creature
+- [x] They feel around, and what they touch is something the creature
       knows about.
 - [ ] They can take hold of a thing in the world.
 - [ ] It can hold with one and let go with the other.

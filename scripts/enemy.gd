@@ -670,12 +670,20 @@ func _update_reach(arms: Node3D, _delta: float) -> bool:
 	var reach := _pincer_reach()
 	if prey == null or reach <= 0.0:
 		_end_reach(arms)
+		arms.call("set_searching", true)
+		arms.call("feel", get_world_3d(), get_rid())
 		return false
 
 	var to: Vector3 = prey.global_position - global_position
 	if to.length() > reach + REACH_MARGIN:
 		_end_reach(arms)
+		# Nobody near: the arms go feeling around instead
+		# (STO-ENEMIES-052).
+		arms.call("set_searching", true)
+		arms.call("feel", get_world_3d(), get_rid())
 		return false
+	# Somebody IS near. Reaching for them takes priority over searching.
+	arms.call("set_searching", false)
 
 	# Reaching does NOT take over movement — it keeps walking at you
 	# while the arms come out, which is what makes it frightening rather
