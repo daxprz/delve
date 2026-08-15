@@ -37,6 +37,12 @@ const STUMBLE_DV := 3.0        # below this: a shove — moves a little, keeps c
 const KNOCKDOWN_DV := 7.5      # at/above this: ragdoll (was 5.0 — stance buffed)
 const STUMBLE_TIME := 0.7      # steering lost while stumbling
 const STUMBLE_LEAN := 0.22     # slight body dip toward the buckling side
+## What a BIG creature does instead (STO-ENEMIES-057). A 12.6 degree
+## dip is invisible on something three metres tall; this is a lurch you
+## can see across the room, and it takes longer to gather itself
+## afterwards.
+const BIG_STUMBLE_LEAN := 0.62
+const BIG_STUMBLE_TIME := 1.25
 const STUMBLE_BUCKLE := 1.15   # how far the bad leg folds (radians)
 const RAGDOLL_TIMEOUT := 2.5   # extra seconds to wait for rest before forcing getup
 
@@ -72,6 +78,9 @@ var _collider: CollisionShape3D
 var _mass := 1.0                # relative mass (bulk^2 x build mix)
 var _com_h := 1.2               # center-of-mass height (lever arm)
 var _stability := 1.0           # resistance to being knocked down
+## Resistance to being knocked off its stride, which is NOT the same
+## thing. Defaults to matching stability, so nothing else changes.
+var _trip_stability := -1.0
 
 var _stagger := 0.0
 var _health := MAX_HEALTH
@@ -272,6 +281,13 @@ func _ready() -> void:
 		# topple than anything on two (STO-ENEMIES-021). Sturdy, not
 		# invincible — a big enough blow still puts it down.
 		_stability = 3.2
+		# But being knocked off its STRIDE is a different matter
+		# (STO-ENEMIES-057). Its toughness had put its own stumble out
+		# of reach: at 3.2 it needed dv 9.6 to lurch, more than the game
+		# delivers, so a reaction that existed and was tested never once
+		# appeared. Tripping and toppling are separate tiers and now
+		# scale separately.
+		_trip_stability = 1.35
 		_getup_time = GETUP_TIME * (0.75 + 0.5 * _mass)
 		# Hitbox to match: tall enough to reach its body, wide enough
 		# to cover the legs (STO-ENEMIES-020).
@@ -379,10 +395,10 @@ func _physics_process(delta: float) -> void:
 	# recovers — a lurch, not a whole-body lean.
 	if _stumble > 0.0:
 		_stumble -= delta
-		var t := clampf(_stumble / STUMBLE_TIME, 0.0, 1.0)
+		var t := clampf(_stumble / _stumble_length(), 0.0, 1.0)
 		if _body != null:
 			_body.transform.basis = Basis(_stumble_axis,
-					STUMBLE_LEAN * sin((1.0 - t) * PI)) \
+					_stumble_lean() * sin((1.0 - t) * PI)) \
 					if t > 0.0 else Basis()
 
 	# Taking you away (EPI-ENEMIES-SPIDER-TAKES-YOU). Handled before the
@@ -597,11 +613,11 @@ func _check_leg_knocks(delta: float) -> void:
 	_knocked_legs += 1
 	# A lurch, not a knockdown. Something catching a leg should throw
 	# the creature off its stride; only a real blow should put it down.
-	_stumble = STUMBLE_TIME
+	_stumble = _stumble_length()
 	_stagger = STUMBLE_TIME * 0.5
 	_stumble_axis = Vector3.RIGHT
 	if _body != null and _body.has_method("go_limp"):
-		_body.call("go_limp", STUMBLE_TIME * 0.8)
+		_body.call("go_limp", _stumble_length() * 0.9)
 	DebugOverlay.log("enemy/combat", self,
 			"%s: something caught a leg (%.1f m/s) — stumbles", [name, hit])
 
@@ -1039,6 +1055,22 @@ func _land_blow() -> void:
 		prey.call("take_damage", dmg)
 
 
+## How far it dips while stumbling, and for how long. Big creatures
+## lurch further and take longer to gather themselves.
+func _stumble_lean() -> float:
+	return BIG_STUMBLE_LEAN if _trip_stability > 0.0 else STUMBLE_LEAN
+
+
+func _stumble_length() -> float:
+	return BIG_STUMBLE_TIME if _trip_stability > 0.0 else STUMBLE_TIME
+
+
+## How hard it is to knock off its stride. Falls back to plain
+## stability, so every creature except the giant spider is unaffected.
+func _trip_resistance() -> float:
+	return _trip_stability if _trip_stability > 0.0 else _stability
+
+
 ## How hard this enemy hits. A plain enemy hits for ATTACK_DAMAGE;
 ## STO-ENEMIES-015 reduces it as arms are torn off.
 func attack_damage() -> float:
@@ -1272,7 +1304,7 @@ func apply_knockback(impulse: Vector3, hit_point := Vector3.INF) -> void:
 		# adds it to our CURRENT velocity) — adding it here too would
 		# double the hit.
 		_knockdown(dv, false)
-	elif dv.length() >= STUMBLE_DV * _stability:
+	elif dv.length() >= STUMBLE_DV * _trip_resistance():
 		# MEDIUM: stumble — shoved, loses its footing for a moment,
 		# body lurches in the push direction, but stays up.
 		DebugOverlay.draw_line3("enemy/hits", self,
@@ -1282,7 +1314,7 @@ func apply_knockback(impulse: Vector3, hit_point := Vector3.INF) -> void:
 		velocity += dv
 		velocity.y = maxf(velocity.y, dv.length() * 0.25)
 		_stagger = STUMBLE_TIME
-		_stumble = STUMBLE_TIME
+		_stumble = _stumble_length()
 		var dir := Vector3(dv.x, 0.0, dv.z)
 		dir = dir.normalized() if dir.length() > 0.001 else -global_transform.basis.z
 		var local_dir := (global_transform.basis.inverse() * dir).normalized()
