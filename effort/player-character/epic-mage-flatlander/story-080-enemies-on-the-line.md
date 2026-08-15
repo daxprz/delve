@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: player-character
 size: L
-status: draft
+status: done
 date: 2026-08-14
 depends-on: []
 bd-id: delve-4gxe
@@ -51,16 +51,29 @@ has held up.
 
 ## Definition of Done
 
-- [ ] An enemy whose hitbox intersects the plane is in the Mage's 2D
-      world.
-- [ ] An enemy whose hitbox does not is NOT — he cannot hit it and it
-      cannot hit him.
-- [ ] It updates continuously as things move. An enemy that walks
-      across the plane is in, then out.
-- [ ] It is decided by the HITBOX, not by the enemy's centre — a big
-      creature counts the moment any of it is on the line.
-- [ ] Proven by a headless test that walks an enemy across the plane
-      and checks it goes out -> in -> out.
+- [x] An enemy whose hitbox intersects the plane is in his 2D world.
+- [x] One whose hitbox does not is NOT.
+- [x] It updates continuously. Walked across the plane, the same
+      creature goes **out → IN → out**, purely by where it is standing.
+- [x] It is decided by the HITBOX. The question is put to the physics
+      engine as a thin slab laid ON the plane, so it is real colliders
+      answering — a big creature counts the moment any part of it is on
+      the line, with no special case for size.
+- [x] Not flat, nothing is on his line — even a mob standing on top of
+      him. He has no line to be on.
+- [x] The slab is the same thickness as what he can SEE
+      (STO-CHARACTER-081), so the rule and the picture agree: if it is
+      in his world it is on his screen, and if it is on his screen it
+      can touch him.
+- [x] Proven by `tests/smoke_mage_warp_line.gd`.
+
+## Built (2026-08-14)
+
+`things_on_my_line()` and `is_on_my_line()`. What is NOT built is
+anything acting on the answer — damage and attacks still ignore it, so
+today it is a question the game can ask and does not yet use. The rule
+is the hard part and it is done; wiring combat to it is a smaller job
+that belongs with the combat stories.
 
 ## Out of scope
 

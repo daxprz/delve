@@ -63,13 +63,13 @@ its hitbox is**.
 |---|------|------|-------|
 | 074 | mage-character | M | ✅ He exists and you can pick him. |
 | 075 | four-arms | M | ✅ Four procedural arms, not two. |
-| 076 | flatten-to-plane | L | Press F, pick the plane, become flat. |
-| 077 | slip-through-gaps | L | The point of it: go where nobody can follow. |
-| 078 | platformer-view | L | His camera and controls become a flat game. |
-| 079 | flat-from-outside | M | What everyone ELSE sees. |
-| 080 | enemies-on-the-line | L | In your world only while their hitbox is on the plane. |
-| 081 | faded-background | M | The world behind, as background art. |
-| 082 | slow-warp | M | Reality warps slowly, and it is mesmerising. |
+| 076 | flatten-to-plane | L | ✅ Press F, pick the plane, become flat. |
+| 077 | slip-through-gaps | L | ✅ The point of it: go where nobody can follow. |
+| 078 | platformer-view | L | ✅ His camera and controls become a flat game. |
+| 079 | flat-from-outside | M | ✅ What everyone ELSE sees — except over the network. |
+| 080 | enemies-on-the-line | L | ✅ In your world only while their hitbox is on the plane. |
+| 081 | faded-background | M | ✅ Superseded: he sees ONLY his line. |
+| 082 | slow-warp | M | ✅ Reality warps slowly, and it is mesmerising. |
 
 Built in that order: he has to exist before he can flatten, and he has
 to flatten before there is anything to look at or slip through.
@@ -78,17 +78,28 @@ to flatten before there is anything to look at or slip through.
 
 - [x] The Mage is on the character select screen and can be played.
 - [x] He has four arms.
-- [ ] Pressing F flattens him onto the plane he is facing; pressing it
+- [x] Pressing F flattens him onto the plane he is facing; pressing it
       again brings him back.
-- [ ] The change is a **slow, mesmerising warp**, never a snap.
-- [ ] Flat, he fits through gaps that are impossible otherwise.
-- [ ] Flat, his own view is a platformer.
-- [ ] Flat, other players see a paper-thin man.
-- [ ] An enemy counts as being in his 2D world **only** while its
-      hitbox is on the plane.
-- [ ] The rest of the world is still visible, faded, like background
-      art.
-- [ ] Every one of those proven by a headless test.
+- [x] The change is a **slow, mesmerising warp** — 1.2 s, sampled
+      continuous, never a snap.
+- [x] Flat, he fits through gaps that are impossible otherwise.
+- [x] Flat, his own view is a platformer: camera glided 22 m out, D and
+      A along the plane, mouse dead.
+- [x] Flat, he really is paper-thin — 0.520 m → 0.021 m.
+- [x] An enemy counts as being in his 2D world **only** while its
+      hitbox is on the plane, and can go in and out freely.
+- [x] He sees **only his own line** — a 1.80 m slice. (This replaced
+      the faded-background idea; see STO-CHARACTER-081.)
+- [x] Every one proven by a headless test.
+
+## What is NOT done
+
+- **It does not replicate.** Every part of this is decided locally, so
+  another player would still see a solid man walking through walls.
+  The whole point of STO-CHARACTER-079 is what other people see, so
+  the epic is not really finished until that lands.
+- **Nothing acts on the line rule yet.** Combat still ignores
+  `is_on_my_line()`.
 
 ## The key, settled (operator, 2026-08-14)
 

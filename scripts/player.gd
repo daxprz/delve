@@ -161,9 +161,18 @@ var _squash: Node3D
 ## as nothing at all from one side, and "he vanished" is a much worse
 ## thing to see than "he went very thin".
 const FLAT_THINNESS := 0.04
-## How fast the squash happens. This is a placeholder — the real,
-## slow, mesmerising warp is STO-CHARACTER-082 and is NOT built.
-const SQUASH_RATE := 9.0
+## How long the warp takes (STO-CHARACTER-082).
+##
+## > "the warping would slowly warp and very mezmorizing and it slowly
+## > trasitons" — operator, 2026-08-14
+##
+## Slow on purpose. It is the same length as the camera glide so the two
+## are one movement rather than two effects finishing at different
+## times, and it gives the ability a real COST: you cannot flick in and
+## out of the second dimension to dodge. You commit, and then you live
+## through the seconds it takes.
+const WARP_TIME := 1.2
+const SQUASH_RATE := (1.0 - FLAT_THINNESS) / WARP_TIME
 var _squash_now := 1.0           # 1 = solid, FLAT_THINNESS = flat
 
 # --- The platformer view (STO-CHARACTER-078) -------------------------
@@ -196,6 +205,11 @@ const CAM_FLAT_FOV := 16.0
 ## be hidden object by object, and it stays correct for things that
 ## move.
 const CAM_SLAB := 1.8
+## How thick "the line" is when asking what is on it. Matched to what he
+## can SEE (CAM_SLAB), so the rule and the picture agree: if it is in
+## his world it is on his screen, and if it is on his screen it can
+## touch him.
+const LINE_THICKNESS := 1.8
 var _near_home := 0.05
 var _far_home := 4000.0
 var _cam_blend := 0.0            # 0 = first person, 1 = platformer
@@ -779,11 +793,10 @@ func flatten() -> bool:
 	# has somewhere honest to come back to.
 	if camera != null:
 		_cam_fp_local = camera.transform
-	# The hitbox goes thin too, or being flat would be a costume
-	# (STO-CHARACTER-077).
-	if _collider_node != null and _flat_shape != null:
-		_collider_node.shape = _flat_shape
-		_shape_to_plane()
+	# The hitbox does NOT go thin yet. It goes thin when the WARP
+	# finishes (STO-CHARACTER-082) — being halfway through becoming
+	# two-dimensional must not already let you through a crack, or the
+	# slow warp would be a costume over an instant ability.
 	DebugOverlay.log("player/combat", self,
 			"%s: FLAT on plane through %.1f,%.1f,%.1f normal %.2f,%.2f,%.2f",
 			[name, _plane_origin.x, _plane_origin.y, _plane_origin.z,
@@ -838,6 +851,9 @@ func _update_squash(delta: float) -> void:
 		return
 	var want: float = FLAT_THINNESS if _flat else 1.0
 	_squash_now = move_toward(_squash_now, want, SQUASH_RATE * delta)
+	# The hitbox follows the WARP, not the decision: thin only once he
+	# has fully arrived (STO-CHARACTER-082).
+	_update_hitbox_for_warp()
 	if is_equal_approx(_squash_now, 1.0):
 		# Solid: hand the body straight back, with no scale on it at all.
 		_squash.transform = Transform3D()
@@ -945,9 +961,78 @@ func view_depth() -> float:
 	return camera.far - camera.near
 
 
+## Everything whose HITBOX is on his plane right now
+## (STO-CHARACTER-080).
+##
+## > "any enmys that get in that line is seen as a 2d enemy only when
+## > the hit box is in the line of the 2d world" — operator, 2026-08-14
+##
+## Asked of the physics engine with a thin slab laid ON the plane, so
+## the answer comes from real hitboxes rather than from distances or
+## centre points. That matters for the reason the operator gave: a big
+## creature counts the moment ANY of it is on the line, and it stops
+## counting the moment it steps off — in and out, freely, by where it
+## is standing this instant.
+func things_on_my_line(group := "enemies", reach := 30.0) -> Array:
+	var found: Array = []
+	if not _flat:
+		return found
+	var slab := BoxShape3D.new()
+	# Thin along the normal, wide across the plane.
+	slab.size = Vector3(LINE_THICKNESS, reach, reach)
+	var along := Vector3.UP.cross(_plane_normal)
+	if along.length() < 0.001:
+		return found
+	along = along.normalized()
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = slab
+	q.transform = Transform3D(
+			Basis(_plane_normal, Vector3.UP, along), global_position)
+	q.exclude = [get_rid()]
+	q.collide_with_bodies = true
+	for hit in get_world_3d().direct_space_state.intersect_shape(q, 32):
+		var n = hit.get("collider")
+		if n is Node and (n as Node).is_in_group(group) \
+				and not found.has(n):
+			found.append(n)
+	return found
+
+
+## Is this particular thing in his flat world right now?
+func is_on_my_line(who: Node) -> bool:
+	if not _flat or who == null:
+		return false
+	return things_on_my_line("enemies").has(who) \
+			or things_on_my_line("players").has(who)
+
+
 ## How far round to the platformer view the camera is, 0..1.
 func camera_blend() -> float:
 	return _cam_blend
+
+
+## Swap the hitbox at the ENDS of the warp, never in the middle.
+##
+## Thin only once he has fully arrived, and solid again the instant he
+## starts coming back. Halfway through a warp he is still a person, so
+## he still cannot fit through a crack — which is what stops the slow
+## warp being decoration on an instant ability.
+func _update_hitbox_for_warp() -> void:
+	if _collider_node == null or _flat_shape == null:
+		return
+	var arrived: bool = _flat and warp() >= 0.999
+	if arrived and _collider_node.shape != _flat_shape:
+		_collider_node.shape = _flat_shape
+		_shape_to_plane()
+	elif not arrived and _collider_node.shape != _solid_shape:
+		_collider_node.shape = _solid_shape
+		_collider_node.transform = Transform3D(Basis(),
+				Vector3(0.0, _collider_offset_y(), 0.0))
+
+
+## How far through the warp he is: 0 fully solid, 1 fully flat.
+func warp() -> float:
+	return clampf((1.0 - _squash_now) / (1.0 - FLAT_THINNESS), 0.0, 1.0)
 
 
 ## How thin he looks right now. 1.0 is solid, small is flat.
@@ -1913,6 +1998,16 @@ func _physics_process(delta: float) -> void:
 	# untouched because it lives in the input handler, not here — which
 	# is exactly why you can still watch it walk away.
 	if is_taken():
+		# Caught mid-warp, the warp is CANCELLED (STO-CHARACTER-082).
+		#
+		# The story asked for this to be decided rather than left to
+		# whatever happened, and this is the decision: being grabbed
+		# beats going flat. Without it a Mage snatched halfway through
+		# carried on warping while he was carried off, and arrived on
+		# the spike as a sheet of paper — flat, held, and in a state
+		# nothing else in the game knows how to reason about.
+		if _flat:
+			unflatten()
 		_update_taken(delta)
 		return
 

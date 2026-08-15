@@ -78,7 +78,11 @@ func _physics_process(_d: float) -> bool:
 			if _ticks == 2:
 				Input.action_release("mage_flatten")
 				return false
-			if _ticks < 40:
+			# Long enough for the WARP to finish, not just for the
+			# decision to be made. The warp is deliberately slow now
+			# (STO-CHARACTER-082, 1.2 s), and sampling at 40 ticks caught
+			# him half-warped and called it a failure to flatten.
+			if _ticks < 110:
 				return false
 			_normal = _mage.call("plane_normal")
 			_check(bool(_mage.call("is_flat")), "he flattens")
@@ -129,7 +133,7 @@ func _physics_process(_d: float) -> bool:
 			if _ticks == 2:
 				Input.action_release("mage_flatten")
 				return false
-			if _ticks < 40:
+			if _ticks < 110:
 				return false
 			_check(not bool(_mage.call("is_flat")), "he comes back")
 			var thick := _extent(_normal)
