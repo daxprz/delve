@@ -84,6 +84,7 @@ const LOST_DISTANCE := 12.0
 ## something should still be free to turn.
 const SPIN_DRIVE := 9.0
 
+
 var _bones: Array = []          # {rb, node, len}
 var _body: Node3D               # the animated quadruped body
 var _built := false
