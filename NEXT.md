@@ -19,6 +19,33 @@ Read that first next time. This file is only the state of play.
 
 ---
 
+## 🧙 The Mage exists (2026-08-14)
+
+Your **fifth character**, purple, 4.6 m/s, 75 health — and he has
+**four arms**.
+
+| | measured |
+|---|---|
+| hands | **4**, against the Runner's 2 |
+| closest two hands | **0.259 m** apart — you can count them |
+| lower pair below the upper | **0.25 m** |
+| lower arms swinging while walking | **0.090 rad**, out of step with the top pair |
+
+He was added as **data only** — not one line of the player controller
+changed, which is what the character registry is for.
+
+**His power is not built.** Pressing F, going 2D, the slow warp, the
+platformer view, slipping through gaps, the enemies-on-the-line rule
+and the faded background are all written down (STO-CHARACTER-076 to
+082) and none of them exist. Right now he is a man with four arms.
+
+**Keys changed.** E is rescue (everybody), **R** is the Grabber's arm
+mode, **F** is reserved for the Mage flattening. Raising that clash
+found a live bug: rescue had been put on E, which the Grabber's arm
+toggle already owned.
+
+---
+
 ## 🧠 The spider has a MIND now (2026-08-14)
 
 `scripts/spider_mind.gd`. It is no longer omniscient and no longer the
@@ -119,6 +146,14 @@ Restart Play first — a running game keeps the old code.
 ---
 
 ## 🐛 Known bugs, found and not yet fixed
+
+- **Two of my own tests were flaky and are now fixed**, both the same
+  mistake: sampling **one instant of a chaotic thing**.
+  `smoke_held_by_leg` checked a dragged ragdoll's head against an
+  absolute height at a single moment — across runs that landed anywhere
+  from 3 m below the grip to 5 m above it. It now averages 90 samples
+  and measures relative to the grip. Worth remembering: physics
+  measurements need averaging, not a lucky frame.
 
 - **`smoke_wrap_ragdoll` is FLAKY.** It passes 3 runs out of 3 on its
   own and fails inside the full suite, where the machine is busier. It
