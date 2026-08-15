@@ -82,7 +82,7 @@ func _physics_process(delta: float) -> void:
 	# Being taken: the spider owns where we are, so gravity and the
 	# floor are not ours to obey. Skipping move_and_slide is what stops
 	# the dummy sliding off a spike it has just been put on.
-	if _taken_by != null:
+	if _taken_by != null or _rescued_by != null:
 		return
 	if _spike != null:
 		if is_instance_valid(_spike) and _spike.has_method("impale_point"):
@@ -183,10 +183,39 @@ func impaled_on(spike: Node3D) -> void:
 func released() -> void:
 	_taken_by = null
 	_spike = null
+	_rescued_by = null
+
+
+# --- Being rescued (STO-ENEMIES-035) ---------------------------------
+#
+# The dummy is the reason the rescue can be tried by one person at a
+# keyboard — that is what it was built for (STO-ENEMIES-029). It has no
+# camera and no ragdoll, so it is simply hauled about as a solid body.
+
+var _rescued_by: Node = null
+
+
+func pulled_off_spike(rescuer: Node) -> void:
+	if _spike == null:
+		return
+	_spike = null
+	_rescued_by = rescuer
+	DebugOverlay.log("player/combat", self, "%s: pulled off the spike by %s",
+			[name, rescuer.name if rescuer != null else "?"])
+
+
+func dropped_by_rescuer() -> void:
+	_rescued_by = null
+	_home = global_position    # it stands where it was put down
+	DebugOverlay.log("player/combat", self, "%s: set back down", [name])
+
+
+func is_being_rescued() -> bool:
+	return _rescued_by != null
 
 
 func is_taken() -> bool:
-	return _taken_by != null or _spike != null
+	return _taken_by != null or _spike != null or _rescued_by != null
 
 
 func is_impaled() -> bool:

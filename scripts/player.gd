@@ -89,6 +89,38 @@ var _struggles := 0
 ## there and respawning happen in the SAME frame, so "health reached
 ## zero" is a moment nothing outside this script can ever observe.
 var _bled_out := 0
+
+# --- Held by one leg, limp (STO-ENEMIES-051) -------------------------
+#
+# delve's oldest rule about players is that they NEVER ragdoll: every
+# knockback, piston launch and dive impact moves you without taking
+# your body away from you, because losing control is the most annoying
+# thing a game can do to someone.
+#
+# Being caught by the spider is the ONE exception, and it earns it: it
+# only happens when you have already lost, and you keep your CAMERA the
+# whole time. You lose your body, not your eyes — watching your own limp
+# body hauled off by one leg is the entire point.
+#
+# Nothing else in delve may use this. If a second thing ever ragdolls a
+# player, this rule has stopped meaning anything.
+const RagdollScript := preload("res://scripts/ragdoll.gd")
+## Which parts count as "a leg it could have grabbed you by".
+const GRABBABLE_LEGS: Array = ["ShinL", "ShinR"]
+
+var _limp: Node3D = null         # live ragdoll while being carried
+var _held_part := ""             # the leg the spider has hold of
+
+# --- Being rescued (STO-ENEMIES-035) ---------------------------------
+## How close a rescuer must be to start pulling.
+const RESCUE_RANGE := 3.0
+## How long they must hold the key to get you off the spike. Long
+## enough that standing still next to a spike is a real decision.
+const PULL_TIME := 1.5
+var _pull := 0.0                 # progress pulling somebody off
+var _rescuing: Node = null       # who WE are dragging to safety
+var _rescued_by: Node = null     # who is dragging US
+
 var _screen_tint: ColorRect      # the dim / red overlay
 var _timing_bar: ColorRect
 var _timing_zone: ColorRect
@@ -544,9 +576,75 @@ func grabbed_by(spider: Node3D) -> bool:
 		return false
 	_grabbed_by = spider
 	velocity = Vector3.ZERO
-	DebugOverlay.log("player/combat", self, "%s: GRABBED by %s",
-			[name, spider.name if spider != null else "?"])
+	# It takes you by ONE LEG and the rest of you goes limp
+	# (STO-ENEMIES-051).
+	go_limp(GRABBABLE_LEGS[hash(name) % GRABBABLE_LEGS.size()])
+	DebugOverlay.log("player/combat", self, "%s: GRABBED by %s, by the %s",
+			[name, spider.name if spider != null else "?", _held_part])
 	return true
+
+
+# --- Going limp (STO-ENEMIES-051) ------------------------------------
+
+## Turn the player's body into a real ragdoll, held by `part`.
+func go_limp(part: String) -> void:
+	if _limp != null:
+		return
+	var body := get_node_or_null("Body")
+	if body == null:
+		return
+	_held_part = part
+	var rag: Node3D = RagdollScript.new()
+	rag.name = String(name) + "Limp"
+	# Parented to OUR parent, not to us. A ragdoll hanging off the node
+	# whose position it is about to drive would be chasing itself.
+	get_parent().add_child(rag)
+	rag.global_transform = global_transform
+	if int(rag.call("build_from_body", body, 1.0)) <= 0:
+		rag.queue_free()
+		_held_part = ""
+		return
+	_limp = rag
+	body.visible = false          # the ragdoll has its own meshes
+
+
+## Give the player their body back, upright and under their control.
+func stand_up() -> void:
+	if _limp == null:
+		return
+	if is_instance_valid(_limp):
+		_limp.queue_free()
+	_limp = null
+	_held_part = ""
+	var body := get_node_or_null("Body")
+	if body != null:
+		body.visible = true
+	velocity = Vector3.ZERO
+
+
+func is_limp() -> bool:
+	return _limp != null
+
+
+## Which leg has hold of us, or "" if none.
+func held_leg() -> String:
+	return _held_part
+
+
+## Where the held leg is, and where the head has ended up. Tests read
+## these to prove the body is really dangling off the grip rather than
+## a ragdoll merely existing.
+func held_leg_position() -> Vector3:
+	if _limp == null or _held_part == "":
+		return global_position
+	var p = _limp.call("part", _held_part)
+	return (p as Node3D).global_position if p != null else global_position
+
+
+func limp_head_position() -> Vector3:
+	if _limp == null:
+		return global_position
+	return _limp.call("head_position")
 
 
 ## Slammed into the ground at the start of the drag.
@@ -554,15 +652,34 @@ func smashed_down(amount: float) -> void:
 	take_damage(amount)
 
 
-## The spider is dragging us; it says where we are. Position is driven
-## entirely by the captor — we never move ourselves.
+## Whoever has us says where we are. Position is driven entirely by
+## them — we never move ourselves.
+##
+## Limp, only the **held leg** goes where it is told. Everything else is
+## real physics hanging off it, which is what makes being dragged look
+## like being dragged rather than like being escorted. The player node
+## then follows its own pelvis, so the camera goes along for the ride.
 func dragged_to(point: Vector3) -> void:
-	global_position = point
 	velocity = Vector3.ZERO
+	if _limp == null:
+		global_position = point
+		return
+	var leg = _limp.call("part", _held_part)
+	if leg is RigidBody3D:
+		var rb := leg as RigidBody3D
+		rb.global_position = point
+		rb.linear_velocity = Vector3.ZERO
+		rb.angular_velocity = Vector3.ZERO
+	global_position = _limp.call("pelvis_position")
 
 
 ## Left on a spike. The bleeding starts here.
+##
+## You are solid again the moment you are put on it: a limp body cannot
+## be impaled on anything, and it certainly cannot play a timing game.
+## Going limp is for being *carried*.
 func impaled_on(spike: Node3D) -> void:
+	stand_up()
 	_grabbed_by = null
 	_impaled_on = spike
 	_bleed_thrash = 0.0
@@ -580,15 +697,114 @@ func released() -> void:
 	var was_taken := _grabbed_by != null or _impaled_on != null
 	_grabbed_by = null
 	_impaled_on = null
+	_rescued_by = null
 	_bleed_thrash = 0.0
 	_calm = 0.0
+	stand_up()
 	if was_taken:
 		DebugOverlay.log("player/combat", self, "%s: released", [name])
 	_update_screen_tint()
 
 
 func is_taken() -> bool:
-	return _grabbed_by != null or _impaled_on != null
+	return _grabbed_by != null or _impaled_on != null or _rescued_by != null
+
+
+# --- Being rescued (STO-ENEMIES-035) ---------------------------------
+
+## Pulled off the spike by `rescuer`. The bleeding stops here, but you
+## are NOT free yet — you come off limp, and they have to drag you back
+## up before you are standing again.
+func pulled_off_spike(rescuer: Node) -> void:
+	if _impaled_on == null:
+		return
+	_impaled_on = null
+	_bleed_thrash = 0.0
+	_calm = 0.0
+	_rescued_by = rescuer
+	# Limp for the journey back, exactly as when the spider had you.
+	if _limp == null:
+		go_limp(GRABBABLE_LEGS[hash(name) % GRABBABLE_LEGS.size()])
+	DebugOverlay.log("player/combat", self, "%s: pulled off the spike by %s",
+			[name, rescuer.name if rescuer != null else "?"])
+
+
+## They let go of you. You get your body back and stand up.
+func dropped_by_rescuer() -> void:
+	_rescued_by = null
+	stand_up()
+	DebugOverlay.log("player/combat", self, "%s: back on their feet", [name])
+
+
+func is_being_rescued() -> bool:
+	return _rescued_by != null
+
+
+## How far through pulling somebody off, 0..1 (for the HUD and tests).
+func pull_progress() -> float:
+	return clampf(_pull / PULL_TIME, 0.0, 1.0)
+
+
+func rescuing() -> Node:
+	return _rescuing
+
+
+## Try to rescue somebody. Called every frame while the key is held.
+##
+## Split out from the input handling so a test can exercise the RULE
+## without synthesising key events — and so the negative case (too far
+## away) is testable, which is the check that stops a rescue that fires
+## for everybody everywhere from passing.
+func hold_rescue(delta: float) -> void:
+	# Already dragging someone? Keep dragging, and never start a second.
+	if _rescuing != null and is_instance_valid(_rescuing) \
+			and bool(_rescuing.call("is_being_rescued")):
+		_drag_rescued()
+		return
+	_rescuing = null
+
+	var victim := _nearest_impaled()
+	if victim == null:
+		_pull = 0.0
+		return
+	_pull += delta
+	if _pull >= PULL_TIME:
+		_pull = 0.0
+		victim.call("pulled_off_spike", self)
+		_rescuing = victim
+
+
+## The key was let go, or we stopped being able to rescue.
+func stop_rescue() -> void:
+	_pull = 0.0
+	if _rescuing != null and is_instance_valid(_rescuing):
+		_rescuing.call("dropped_by_rescuer")
+	_rescuing = null
+
+
+## The nearest impaled body within reach — and never ourselves, because
+## the one thing this story insists on is that you cannot save yourself.
+func _nearest_impaled() -> Node:
+	var best: Node = null
+	var best_d := RESCUE_RANGE
+	for p in get_tree().get_nodes_in_group("players"):
+		if p == self or p is not Node3D:
+			continue
+		if not p.has_method("is_impaled") or not bool(p.call("is_impaled")):
+			continue
+		var d: float = global_position.distance_to(
+				(p as Node3D).global_position)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+
+## Haul the person we have hold of along behind us, on the ground.
+func _drag_rescued() -> void:
+	var behind: Vector3 = global_position + global_transform.basis.z * 1.2
+	_rescuing.call("dragged_to", Vector3(behind.x,
+			global_position.y - 0.6, behind.z))
 
 func is_impaled() -> bool:
 	return _impaled_on != null
@@ -668,6 +884,12 @@ func thrash_once(is_struggle: bool) -> void:
 ## Everything that happens while the spider has you.
 func _update_taken(delta: float) -> void:
 	velocity = Vector3.ZERO
+
+	# Limp, our position IS our body's position. Following the pelvis is
+	# what carries the camera along, and it is the reason "you can look
+	# around" survives losing control of everything else.
+	if _limp != null and is_instance_valid(_limp):
+		global_position = _limp.call("pelvis_position")
 
 	if _impaled_on != null:
 		# The marker sweeps back and forth; the good bit is the middle.
@@ -1226,9 +1448,16 @@ func _physics_process(delta: float) -> void:
 	# abilities, no movement, no heal-over-time. Looking around is
 	# untouched because it lives in the input handler, not here — which
 	# is exactly why you can still watch it walk away.
-	if _grabbed_by != null or _impaled_on != null:
+	if is_taken():
 		_update_taken(delta)
 		return
+
+	# Rescuing somebody (STO-ENEMIES-035). Held, not tapped: they have
+	# to stand next to a spike and commit, which is the whole risk.
+	if Input.is_action_pressed("rescue"):
+		hold_rescue(delta)
+	elif _rescuing != null or _pull > 0.0:
+		stop_rescue()
 
 	# Combo decays if you don't land a hit in time (STO-COMBAT-003).
 	if _combo_timer > 0.0:
