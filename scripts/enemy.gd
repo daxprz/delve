@@ -475,6 +475,9 @@ func _physics_process(delta: float) -> void:
 			velocity.x = move_toward(velocity.x, 0.0, FRICTION * delta)
 			velocity.z = move_toward(velocity.z, 0.0, FRICTION * delta)
 
+	# Something hit a leg? Lurch (STO-ENEMIES-056).
+	_check_leg_knocks(delta)
+
 	var was_at := global_position
 	# Whether it was TRYING to go anywhere, read BEFORE move_and_slide:
 	# this is intent, and intent is what makes "I got nowhere" mean
@@ -564,6 +567,53 @@ func _think_about_moving(moved: float, delta: float, trying: bool) -> void:
 		_body.call("set_gait_scale", _mind.gait())
 
 
+## Anything that hits a leg makes the creature stumble
+## (STO-ENEMIES-056).
+##
+## The knock has to come from the LEGS rather than from the body's own
+## collider, because that is the whole point: a spider whose legs are
+## real is a spider that can be tripped by things its body never
+## touched.
+##
+## Rate-limited hard. A leg resting against a wall reports a knock
+## every tick it is pushed into it, and without a cooldown the creature
+## would stumble for ever and never walk away from anything.
+const LEG_KNOCK_COOLDOWN := 1.4
+var _knock_cd := 0.0
+
+
+func _check_leg_knocks(delta: float) -> void:
+	if _knock_cd > 0.0:
+		_knock_cd -= delta
+		return
+	if _solid == null or not _solid.has_method("take_knock"):
+		return
+	if _dead or _ragdoll != null or _stumble > 0.0:
+		return
+	var hit: float = float(_solid.call("take_knock"))
+	if hit <= 0.0:
+		return
+	_knock_cd = LEG_KNOCK_COOLDOWN
+	_knocked_legs += 1
+	# A lurch, not a knockdown. Something catching a leg should throw
+	# the creature off its stride; only a real blow should put it down.
+	_stumble = STUMBLE_TIME
+	_stagger = STUMBLE_TIME * 0.5
+	_stumble_axis = Vector3.RIGHT
+	if _body != null and _body.has_method("go_limp"):
+		_body.call("go_limp", STUMBLE_TIME * 0.8)
+	DebugOverlay.log("enemy/combat", self,
+			"%s: something caught a leg (%.1f m/s) — stumbles", [name, hit])
+
+
+## How many times a leg has been caught (tests read this).
+func leg_knocks() -> int:
+	return _knocked_legs
+
+
+var _knocked_legs := 0
+
+
 ## Hang the physics limbs in the world once everything exists.
 ##
 ## Deferred because the body builds its legs in its own _ready, and
@@ -575,7 +625,7 @@ func _attach_solid() -> void:
 	if host == null:
 		return
 	host.add_child(_solid)
-	if int(_solid.call("build", _body)) <= 0:
+	if int(_solid.call("build", _body, self)) <= 0:
 		_solid.queue_free()
 		_solid = null
 		return

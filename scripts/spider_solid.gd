@@ -67,6 +67,7 @@ const FOOT_GRIP := 1.6
 ## be told to collide with EACH OTHER without every raycast in delve
 ## suddenly finding a forest of spider legs.
 const LIMB_LAYER := 4
+const BoneScript := preload("res://scripts/spider_bone.gd")
 ## Further than this from where it belongs and a bone is considered
 ## lost, and put back. A safety net, not a mechanism: if this fires
 ## often, something else is wrong.
@@ -86,12 +87,14 @@ const SPIN_DRIVE := 9.0
 var _bones: Array = []          # {rb, node, len}
 var _body: Node3D               # the animated quadruped body
 var _built := false
+var _creature: Node
 
 
 ## Build physics bones mirroring every leg segment of `body`.
 ## Returns how many were made.
-func build(body: Node3D) -> int:
+func build(body: Node3D, creature: Node = null) -> int:
 	_body = body
+	_creature = creature
 	if _body == null or not _body.has_method("limb_segments"):
 		return 0
 	var segs: Array = _body.call("limb_segments")
@@ -109,7 +112,7 @@ func build(body: Node3D) -> int:
 		var length: float = a.distance_to(b)
 		if length < 0.02:
 			continue
-		var rb := RigidBody3D.new()
+		var rb: RigidBody3D = BoneScript.new()
 		rb.name = "Bone_" + String(s["name"]).replace("/", "_")
 		# Its own layer, colliding with the world AND with itself, which
 		# is the thing the operator asked for twice.
@@ -117,6 +120,10 @@ func build(body: Node3D) -> int:
 		rb.collision_mask = 1 | LIMB_LAYER
 		rb.mass = maxf(0.5, length * 2.0)
 		rb.can_sleep = false
+		# Needed for _integrate_forces to see contacts at all
+		# (STO-ENEMIES-056).
+		rb.contact_monitor = true
+		rb.max_contacts_reported = 6
 		# Swept, not stepped. These bones are 0.08 m thick and a
 		# stepping foot moves several metres a second, so without this
 		# they jump clean over a wall between one tick and the next —
@@ -176,6 +183,23 @@ func build(body: Node3D) -> int:
 			if String(_bones[i]["limb"]) == String(_bones[j]["limb"]):
 				(_bones[i]["rb"] as RigidBody3D) \
 						.add_collision_exception_with(_bones[j]["rb"])
+
+	# Every bone is told about every other, so a leg brushing its own
+	# creature can never be mistaken for something hitting it.
+	# Kin is every bone AND the creature they belong to.
+	#
+	# Leaving the creature out meant its own legs kept catching on its
+	# own body capsule and reporting it as an obstacle — the spider
+	# tripped over itself four times on empty ground, which looked
+	# exactly like the floor being mistaken for a wall.
+	var all: Array = []
+	if _creature != null:
+		all.append(_creature)
+	for bone in _bones:
+		all.append(bone["rb"])
+	for bone in _bones:
+		(bone["rb"] as Node).set("kin", all)
+		(bone["rb"] as Node).set("is_foot", bool(bone["foot"]))
 
 	_built = not _bones.is_empty()
 	print("[SOLID] %d physics bones built" % _bones.size())
@@ -270,3 +294,17 @@ func bone_segments() -> Array:
 
 func bone_count() -> int:
 	return _bones.size()
+
+
+## The hardest knock any leg has taken since this was last asked, in
+## metres per second. Zero means nothing has hit it.
+##
+## Asking clears them, so a single knock cannot stumble the creature
+## twice.
+func take_knock() -> float:
+	var worst := 0.0
+	for bone in _bones:
+		var rb = bone["rb"]
+		if is_instance_valid(rb) and rb.has_method("take_knocks"):
+			worst = maxf(worst, float(rb.call("take_knocks")))
+	return worst
