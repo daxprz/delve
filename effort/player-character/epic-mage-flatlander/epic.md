@@ -44,7 +44,7 @@ original thing in the project.
 
 | | |
 |---|---|
-| **The key** | Press **E**. Press again to come back. |
+| **The key** | Press **F**. Press again to come back. |
 | **The plane** | Everything **in front of him** is the 2D plane he is on. He picks it by where he is facing. |
 | **What it is for** | Slipping through **super small gaps** and other things that would be impossible otherwise. |
 | **From outside** | He looks like he has **become 2D** — flat. |
@@ -69,6 +69,7 @@ its hitbox is**.
 | 079 | flat-from-outside | M | What everyone ELSE sees. |
 | 080 | enemies-on-the-line | L | In your world only while their hitbox is on the plane. |
 | 081 | faded-background | M | The world behind, as background art. |
+| 082 | slow-warp | M | Reality warps slowly, and it is mesmerising. |
 
 Built in that order: he has to exist before he can flatten, and he has
 to flatten before there is anything to look at or slip through.
@@ -77,8 +78,9 @@ to flatten before there is anything to look at or slip through.
 
 - [ ] The Mage is on the character select screen and can be played.
 - [ ] He has four arms.
-- [ ] Pressing E flattens him onto the plane he is facing; pressing it
+- [ ] Pressing F flattens him onto the plane he is facing; pressing it
       again brings him back.
+- [ ] The change is a **slow, mesmerising warp**, never a snap.
 - [ ] Flat, he fits through gaps that are impossible otherwise.
 - [ ] Flat, his own view is a platformer.
 - [ ] Flat, other players see a paper-thin man.
@@ -88,17 +90,33 @@ to flatten before there is anything to look at or slip through.
       art.
 - [ ] Every one of those proven by a headless test.
 
-## ⚠️ Known conflict: the E key
+## The key, settled (operator, 2026-08-14)
 
-**E is already the rescue key** (STO-ENEMIES-035), added earlier today.
-Both cannot own it. This has to be settled before STO-CHARACTER-076 is
-built — written down here rather than quietly solved, because picking
-one silently would break the other and neither of us would notice until
-somebody was left on a spike.
+**F.** The Mage flattens on F.
+
+Raising the clash was worth it, because checking the bindings turned up
+a **live bug of my own**: `rescue` had been added on **E**, which the
+Grabber's arm-mode toggle already owned. A Grabber pressing E folded
+its arms *and* started a rescue.
+
+The operator settled both at once — **the Grabber's key is the one that
+moves**:
+
+| key | now |
+|---|---|
+| **E** | rescue (everyone) |
+| **R** | the Grabber's arm-mode toggle |
+| **F** | the Mage flattens |
+
+F was already the Grabber's piston pull, and that is fine: the piston
+is Grabber-only and the Mage will never have one, so no character is
+ever asked to do both. Rescue is the one that had to be exclusive,
+because **everybody** can rescue.
 
 ## Out of scope
 
 - Other characters going 2D. It is the Mage's trick.
 - The world being genuinely 2D for anybody else.
-- What "warping reality" means beyond this. The operator described the
-  second dimension in full; the warping is still to be specified.
+- A second, separate "warp reality" power. It turned out there is no
+  such thing: **the warp IS the transition into 2D** (STO-CHARACTER-082).
+  He has one power, not two.

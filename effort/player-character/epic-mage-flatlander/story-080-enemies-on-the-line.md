@@ -27,6 +27,17 @@ something he can fight and be hurt by, and then wanders out of it
 again. The danger is not "this enemy is 2D" — it is "this enemy is on
 my line, right now".
 
+## Confirmed, and they come and go (operator, 2026-08-14)
+
+Asked to check this back, the operator confirmed it exactly:
+
+> "yes only when its in the line and the eneymey is able to go in and
+> out"
+
+So it is not a one-way door. An enemy can be in his world, leave it,
+and come back — as many times as it likes, purely by where it is
+standing. **In and out** is the required behaviour, not a side effect.
+
 ## Why that is the right rule
 
 Because it makes the plane a **place**, with a real edge. The Mage is
