@@ -115,8 +115,8 @@ moves**:
 
 | key | now |
 |---|---|
-| **E** | rescue (everyone) |
-| **R** | the Grabber's arm-mode toggle |
+| **R** | rescue (everyone) |
+| **E** | the Grabber's arm-mode toggle |
 | **F** | the Mage flattens |
 
 F was already the Grabber's piston pull, and that is fine: the piston

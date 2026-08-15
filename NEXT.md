@@ -88,7 +88,7 @@ platformer view, slipping through gaps, the enemies-on-the-line rule
 and the faded background are all written down (STO-CHARACTER-076 to
 082) and none of them exist. Right now he is a man with four arms.
 
-**Keys changed.** E is rescue (everybody), **R** is the Grabber's arm
+**Keys changed.** R is rescue (everybody), **R** is the Grabber's arm
 mode, **F** is reserved for the Mage flattening. Raising that clash
 found a live bug: rescue had been put on E, which the Grabber's arm
 toggle already owned.

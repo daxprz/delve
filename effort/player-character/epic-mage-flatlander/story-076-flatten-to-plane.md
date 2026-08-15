@@ -50,8 +50,8 @@ obvious key, while an arm-mode toggle is Grabber-only.
 
 | key | now |
 |---|---|
-| **E** | rescue — everybody |
-| **R** | the Grabber's arm-mode toggle |
+| **R** | rescue — everybody |
+| **E** | the Grabber's arm-mode toggle |
 | **F** | the Mage flattens |
 
 F is also the Grabber's piston pull, and that is deliberate rather than

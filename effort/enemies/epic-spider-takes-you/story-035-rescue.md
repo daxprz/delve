@@ -37,7 +37,7 @@ no choice, and the spike is just a slower way of dying.
 - **You cannot free yourself.** Nothing you can do while pinned frees
   you — struggling and fighting only bleed you faster
   (STO-ENEMIES-050). This is not a difficulty setting; it is the point.
-- **A rescuer must be close and must commit.** Holding **E** for
+- **A rescuer must be close and must commit.** Holding **R** for
   **1.5 s** while standing next to you. Let go and the progress is
   lost, so it is a real decision to stand still next to a spike.
 - **Then they have to DRAG YOU BACK** (operator, 2026-08-14). Coming
@@ -51,9 +51,21 @@ no choice, and the spike is just a slower way of dying.
   at the keyboard. That is exactly why the dummy was built first
   (STO-ENEMIES-029).
 
+## The key changed twice (operator)
+
+**R**, finally. It went E → R → E → R across two days as the Mage's
+flattening was fitted in around it.
+
+Worth recording rather than tidying away: the churn is what found a
+real bug. Rescue was briefly on **E**, which the Grabber's arm-mode
+toggle already owned — a Grabber pressing E folded its arms *and* began
+a rescue, and nobody had noticed. Rescue is the action **everybody**
+can do, so it is the one that needs a key to itself; an arm toggle only
+the Grabber has can share.
+
 ## Definition of Done
 
-- [x] A free player standing near an impaled one holds **E** to free
+- [x] A free player standing near an impaled one holds **R** to free
       them.
 - [x] It takes about 1.5 s — measured **1.53 s** — and letting go loses
       the progress.
