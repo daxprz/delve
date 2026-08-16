@@ -401,8 +401,17 @@ const PRONG_HUB := 0.055
 const PRONG_FLARE := 26.0
 ## A prong is longer and heavier than a finger, and tapers to a point.
 ## Longer, at the operator's request: a stubby prong reads as a finger.
+## A prong is TWO blocks, not three (STO-CHARACTER-088): a short base
+## and a long top, which is what gives it one clean bend instead of a
+## gentle curve.
+const PRONG_SEGMENTS := 2
+## How the total length splits. The base is the shorter of the two.
+const PRONG_BASE_SHARE := 0.35
 const PRONG_LEN_MUL := 2.2
-const PRONG_TH_MUL := 1.6
+## SLIM, and the same all the way along — no taper. A tapering prong
+## reads as a spike; a constant-section bar with a bend in it reads as
+## a grabber, which is the thing that is meant to be obvious on sight.
+const PRONG_TH_MUL := 0.62
 ## The elbow. Each prong goes out, then angles back IN — the bend is
 ## what makes the silhouette a `<` rather than a straight spike, and a
 ## straight spike cannot cradle anything.
@@ -427,25 +436,28 @@ func _add_prongs(hand: Node3D) -> void:
 		var corner: Vector2 = PRONG_CORNERS[i]
 		var prong := _make_prong(String(PRONG_NAMES[i]))
 		prong.position = Vector3(corner.x * hub, corner.y * hub, knuckle_z)
-		# Leaning outward from its own corner, so an open claw is a
-		# spread and a shut one brings the four points together.
+		# Pointing INWARD, toward the claw's centre line
+		# (STO-CHARACTER-088). A prong angled outward is a bollard; one
+		# angled inward is something that could close on a thing.
 		prong.rotation = Vector3(
-				-corner.y * deg_to_rad(PRONG_FLARE),
-				corner.x * deg_to_rad(PRONG_FLARE), 0.0)
+				corner.y * deg_to_rad(PRONG_FLARE),
+				-corner.x * deg_to_rad(PRONG_FLARE), 0.0)
 		fingers.add_child(prong)
 
 
 ## One prong: the same nested joint chain a finger uses, so the curl
 ## driver cannot tell the difference — but tapered and all metal.
 func _make_prong(prong_name: String) -> Node3D:
-	var seg_len := FINGER_LEN * arm_scale * PRONG_LEN_MUL \
-			/ float(FINGER_SEGMENTS)
-	var base_th := FINGER_TH * arm_scale * PRONG_TH_MUL
+	var total := FINGER_LEN * arm_scale * PRONG_LEN_MUL
+	var th := FINGER_TH * arm_scale * PRONG_TH_MUL
 
 	var root := Node3D.new()
 	root.name = prong_name
 	var parent := root
-	for s_i in FINGER_SEGMENTS:
+	for s_i in PRONG_SEGMENTS:
+		# Short base, long top.
+		var seg_len: float = total * (PRONG_BASE_SHARE if s_i == 0
+				else 1.0 - PRONG_BASE_SHARE)
 		var joint := Node3D.new()
 		joint.name = "J%d" % s_i
 		# The elbow: one fixed kink partway along, so the prong goes out
@@ -455,10 +467,6 @@ func _make_prong(prong_name: String) -> Node3D:
 			joint.rotation.y = deg_to_rad(PRONG_KINK)
 		parent.add_child(joint)
 
-		# Thicker at the hub, pointed at the tip — the taper is what
-		# reads as "claw" rather than "three fingers".
-		var t: float = float(s_i) / float(maxi(FINGER_SEGMENTS - 1, 1))
-		var th: float = lerpf(base_th, base_th * 0.3, t)
 		var seg := MeshInstance3D.new()
 		seg.name = "Seg"
 		var sbox := BoxMesh.new()
@@ -468,11 +476,46 @@ func _make_prong(prong_name: String) -> Node3D:
 		seg.position = Vector3(0.0, 0.0, seg_len * 0.5)
 		joint.add_child(seg)
 
+		# Every piece gets its own collision (STO-CHARACTER-088).
+		#
+		# An Area3D rather than a solid body: a prong is carried about by
+		# an animated chain, and a solid body dragged through the world
+		# by an animation fights the solver instead of obeying it. An
+		# area detects what it has closed around, which is what a claw
+		# actually needs to know.
+		var sense := Area3D.new()
+		sense.name = "Touch"
+		sense.monitorable = false
+		var cs := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(th, th, seg_len)
+		cs.shape = shape
+		cs.position = Vector3(0.0, 0.0, seg_len * 0.5)
+		sense.add_child(cs)
+		joint.add_child(sense)
+		_prong_pieces.append(sense)
+
 		var tip := Node3D.new()
 		tip.name = "End"
 		tip.position = Vector3(0.0, 0.0, seg_len)
 		joint.add_child(tip)
 		parent = tip
+
+	# ...and NOT against the piece it joins to.
+	#
+	# The two blocks of one prong share a joint, so their shapes always
+	# overlap — by construction, every frame, for ever. That is exactly
+	# what threw the spider's skeleton 335 m across the map when it was
+	# left unhandled (STO-ENEMIES-055), and the operator arrived at the
+	# same rule independently.
+	#
+	# For AREAS it is satisfied by construction rather than by a list of
+	# exceptions: `monitorable = false` means no other area can see
+	# them, and `pieces_touching()` only ever asks for overlapping
+	# BODIES. Two sibling areas sitting inside each other therefore
+	# cannot notice or push one another. Area3D has no
+	# add_collision_exception_with — trying to use one is what proved
+	# these are not solid bodies fighting a solver.
 	return root
 
 
@@ -1129,6 +1172,8 @@ const CLAW_RATE := 1.6
 const CLAW_BITE := 1.1
 
 ## Per hand: how open it is now, and what it is heading for.
+## Every collision piece on every prong, so a test can count them.
+var _prong_pieces: Array = []
 var _claw_at := [CLAW_OPEN, CLAW_OPEN]
 var _claw_want := [CLAW_OPEN, CLAW_OPEN]
 
@@ -1192,6 +1237,25 @@ func _claw_hand(i: int) -> Node3D:
 		return null
 	var root: Node3D = _arms[i]["root"]
 	return root.get_node_or_null("Hand") as Node3D
+
+
+## What the claw's pieces are currently touching — real bodies only,
+## never its own other pieces or the player carrying it.
+func pieces_touching() -> Array:
+	var found: Array = []
+	for a in _prong_pieces:
+		if not is_instance_valid(a):
+			continue
+		for b in (a as Area3D).get_overlapping_bodies():
+			if b == _player or found.has(b):
+				continue
+			found.append(b)
+	return found
+
+
+## How many prong pieces carry collision (for tests).
+func prong_piece_count() -> int:
+	return _prong_pieces.size()
 
 
 ## Is this claw shut? (for tests)

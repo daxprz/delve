@@ -130,6 +130,43 @@ func _physics_process(_d: float) -> bool:
 							(rel - dir * rel.dot(dir)).length())
 				print("[CLAW] elbow sits %.4f m off the straight line"
 						% worst_bend)
+				# STO-CHARACTER-088: two blocks each, short base and long
+				# top, same section, and every piece carrying collision.
+				var d0 := digits[0] as Node3D
+				var blocks := 0
+				var n: Node3D = d0
+				var lens: Array = []
+				var sects: Array = []
+				while true:
+					var j := n.get_node_or_null("J%d" % blocks) as Node3D
+					if j == null:
+						break
+					var mesh := j.get_node_or_null("Seg") as MeshInstance3D
+					if mesh != null:
+						var sz: Vector3 = (mesh.mesh as BoxMesh).size
+						lens.append(sz.z)
+						sects.append(Vector2(sz.x, sz.y))
+					blocks += 1
+					n = j.get_node_or_null("End") as Node3D
+					if n == null:
+						break
+				print("[CLAW] blocks per prong: %d, lengths %s, sections %s"
+						% [blocks, str(lens), str(sects)])
+				_check(blocks == 2,
+						"each prong is TWO blocks (%d)" % blocks)
+				if lens.size() == 2:
+					_check(float(lens[0]) < float(lens[1]),
+							"the base is SHORTER than the top (%.3f vs %.3f)"
+							% [float(lens[0]), float(lens[1])])
+					_check((sects[0] as Vector2).is_equal_approx(
+							sects[1] as Vector2),
+							"both the same width and height — no taper")
+					_check((sects[0] as Vector2).x < 0.07,
+							"and slim (%.3f m across)"
+							% (sects[0] as Vector2).x)
+				_check(int(_arms.call("prong_piece_count")) == 16,
+						"every piece has collision — 4 prongs x 2 blocks x "
+						+ "2 hands = %d" % int(_arms.call("prong_piece_count")))
 				_check(worst_bend > 0.005,
 						"each prong is BENT like < — elbow %.4f m off the "
 						% worst_bend + "base-to-tip line, not a spike")
