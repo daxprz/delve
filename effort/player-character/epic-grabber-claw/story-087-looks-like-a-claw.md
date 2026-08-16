@@ -53,9 +53,12 @@ finger-shaped in a way that matters, and that is worth finding out.
 
 ## Definition of Done
 
-- [x] Three prongs — `["ProngA", "ProngB", "ProngC"]`.
-- [x] Spread **around** a hub, not in a row: 0.082 across **and** 0.095
-      up. Three in a line would share a coordinate; these cannot.
+- [x] **Four** prongs, one at each diagonal corner — top-left,
+      top-right, bottom-left, bottom-right.
+- [x] Spread **around** a hub, not in a row — all four sign
+      combinations of (x, y) present.
+- [x] **Longer**, and each **bent like `<`**: the elbow sits measurably
+      off the straight line from base to tip.
 - [x] They taper from the hub to a point.
 - [x] All metal, never the skin material.
 - [x] They still open and shut on Q and E and still catch things —
@@ -63,6 +66,36 @@ finger-shaped in a way that matters, and that is worth finding out.
 - [x] Proven by `tests/smoke_claw.gd`.
 - [ ] ~~Every other character still has five fingers.~~ **This turned
       out to be meaningless** — see below.
+
+## Amended (2026-08-16): four prongs, longer, bent like `<`
+
+> "make it so its like so its longer and its shaped like < and theres 4
+> one at the top right one at the bottem right one at the top left and
+> one the bottem left" — operator
+
+Three prongs at 120° was my reading of "a claw machine claw". The
+operator's is more specific and better:
+
+- **Four** prongs, one at each **diagonal corner** — top-left,
+  top-right, bottom-left, bottom-right. Not three, and not in a row.
+- **Longer.**
+- **Bent like `<`** — each prong has an elbow, so it goes out and then
+  angles back in, rather than being a straight spike.
+
+Four at the corners is the arrangement of an actual arcade claw, and
+the elbow is what makes the silhouette read as a grabber rather than a
+fork. Straight prongs cannot cradle anything; bent ones can.
+
+### How the bend survives curling
+
+`set_finger_curl` drives `rotation.x` on every joint and nothing else,
+so the elbow is built as a fixed rotation on a **different axis** at
+the middle joint. Curling and the bend then cannot fight: one owns x,
+the other owns y.
+
+**The bend is measured, not eyeballed.** A `<` means the elbow is off
+the straight line between the base and the tip — so that is the check,
+in metres, rather than "it looks bent".
 
 ## The consequence nobody asked for, and it is real
 

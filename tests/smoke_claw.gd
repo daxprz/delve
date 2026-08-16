@@ -81,27 +81,58 @@ func _physics_process(_d: float) -> bool:
 			for d in digits:
 				names.append(String(d.name))
 			print("[CLAW] digits on the left hand: %s" % str(names))
-			_check(digits.size() == 3,
-					"it has THREE prongs, not five fingers (%d)"
+			_check(digits.size() == 4,
+					"it has FOUR prongs, one per corner (%d)"
 					% digits.size())
-			if digits.size() == 3:
-				# Evenly around the hub. Three in a line would all share
-				# a coordinate; three at 120 degrees cannot.
-				var spread_x := 0.0
-				var spread_y := 0.0
+			if digits.size() == 4:
 				var lo := Vector2(999, 999)
 				var hi := Vector2(-999, -999)
+				var corners := {}
 				for d in digits:
 					var pos: Vector3 = (d as Node3D).position
 					lo = Vector2(minf(lo.x, pos.x), minf(lo.y, pos.y))
 					hi = Vector2(maxf(hi.x, pos.x), maxf(hi.y, pos.y))
-				spread_x = hi.x - lo.x
-				spread_y = hi.y - lo.y
-				print("[CLAW] prongs spread %.3f across, %.3f up"
-						% [spread_x, spread_y])
+					corners["%.0f,%.0f" % [signf(pos.x), signf(pos.y)]] = true
+				var spread_x := hi.x - lo.x
+				var spread_y := hi.y - lo.y
+				print("[CLAW] prongs spread %.3f across, %.3f up; %d corners"
+						% [spread_x, spread_y, corners.size()])
 				_check(spread_x > 0.01 and spread_y > 0.01,
-						"and they are spread AROUND a hub, not in a row "
-						+ "(%.3f x %.3f)" % [spread_x, spread_y])
+						"spread AROUND a hub, not in a row (%.3f x %.3f)"
+						% [spread_x, spread_y])
+				_check(corners.size() == 4,
+						"one prong at each of the FOUR corners (%d)"
+						% corners.size())
+				# Shaped like `<`: the elbow sits OFF the straight line
+				# from base to tip. A straight spike has its elbow
+				# exactly ON that line, so this cannot pass for one.
+				var worst_bend := 0.0
+				for d in digits:
+					var j0 := (d as Node3D).get_node_or_null("J0") as Node3D
+					if j0 == null:
+						continue
+					var elbow := j0.get_node_or_null("End") as Node3D
+					if elbow == null:
+						continue
+					var j1 := elbow.get_node_or_null("J1") as Node3D
+					if j1 == null:
+						continue
+					var tip := j1.get_node_or_null("End") as Node3D
+					if tip == null:
+						continue
+					var a := (d as Node3D).global_position
+					var dir := tip.global_position - a
+					if dir.length() < 0.001:
+						continue
+					dir = dir.normalized()
+					var rel := elbow.global_position - a
+					worst_bend = maxf(worst_bend,
+							(rel - dir * rel.dot(dir)).length())
+				print("[CLAW] elbow sits %.4f m off the straight line"
+						% worst_bend)
+				_check(worst_bend > 0.005,
+						"each prong is BENT like < — elbow %.4f m off the "
+						% worst_bend + "base-to-tip line, not a spike")
 			_next("close_left")
 
 		"close_left":

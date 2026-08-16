@@ -386,14 +386,30 @@ func _make_fist() -> Node3D:
 ## node called "Fingers" — so `set_hand_curl` and `set_finger_curl`
 ## drive them without knowing there are three of them and that they are
 ## metal. Nothing in the driving code changed.
-const PRONG_NAMES: Array = ["ProngA", "ProngB", "ProngC"]
+## Four prongs, one at each diagonal corner — the arrangement of an
+## actual arcade claw (operator, 2026-08-16). Named for where they sit
+## so a test can check they really are at four different corners.
+const PRONG_NAMES: Array = ["ProngTL", "ProngTR", "ProngBL", "ProngBR"]
+## Which corner each one goes to, as (x, y) signs.
+const PRONG_CORNERS: Array = [
+	Vector2(-1.0, 1.0), Vector2(1.0, 1.0),
+	Vector2(-1.0, -1.0), Vector2(1.0, -1.0),
+]
 ## How far out from the middle each prong is planted, and how far it
 ## leans outward before it closes.
 const PRONG_HUB := 0.055
 const PRONG_FLARE := 26.0
 ## A prong is longer and heavier than a finger, and tapers to a point.
-const PRONG_LEN_MUL := 1.35
+## Longer, at the operator's request: a stubby prong reads as a finger.
+const PRONG_LEN_MUL := 2.2
 const PRONG_TH_MUL := 1.6
+## The elbow. Each prong goes out, then angles back IN — the bend is
+## what makes the silhouette a `<` rather than a straight spike, and a
+## straight spike cannot cradle anything.
+##
+## Applied on rotation.y because `set_finger_curl` owns rotation.x on
+## every joint. One axis each, so curling and the bend cannot fight.
+const PRONG_KINK := 38.0
 
 
 func _add_prongs(hand: Node3D) -> void:
@@ -408,14 +424,14 @@ func _add_prongs(hand: Node3D) -> void:
 	var hub := PRONG_HUB * arm_scale
 	var knuckle_z := HAND_LEN * arm_scale
 	for i in PRONG_NAMES.size():
-		# Evenly around the hub — 120 degrees apart, not in a row.
-		var a: float = TAU * float(i) / float(PRONG_NAMES.size())
+		var corner: Vector2 = PRONG_CORNERS[i]
 		var prong := _make_prong(String(PRONG_NAMES[i]))
-		prong.position = Vector3(cos(a) * hub, sin(a) * hub, knuckle_z)
-		# Leaning outward, so an open claw is a spread and a shut one
-		# brings the points together.
-		prong.rotation = Vector3(sin(a) * deg_to_rad(PRONG_FLARE),
-				-cos(a) * deg_to_rad(PRONG_FLARE), 0.0)
+		prong.position = Vector3(corner.x * hub, corner.y * hub, knuckle_z)
+		# Leaning outward from its own corner, so an open claw is a
+		# spread and a shut one brings the four points together.
+		prong.rotation = Vector3(
+				-corner.y * deg_to_rad(PRONG_FLARE),
+				corner.x * deg_to_rad(PRONG_FLARE), 0.0)
 		fingers.add_child(prong)
 
 
@@ -432,6 +448,11 @@ func _make_prong(prong_name: String) -> Node3D:
 	for s_i in FINGER_SEGMENTS:
 		var joint := Node3D.new()
 		joint.name = "J%d" % s_i
+		# The elbow: one fixed kink partway along, so the prong goes out
+		# and then angles back in. On the y axis, because the curl
+		# driver owns x.
+		if s_i == 1:
+			joint.rotation.y = deg_to_rad(PRONG_KINK)
 		parent.add_child(joint)
 
 		# Thicker at the hub, pointed at the tip — the taper is what
