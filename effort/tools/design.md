@@ -2,7 +2,7 @@
 xid: DES-TOOLS-001
 kind: design
 effort: tools
-status: open
+status: in-progress
 date: 2026-08-06
 bd-id: delve-1kv
 ---

@@ -374,62 +374,30 @@ func _make_fist() -> Node3D:
 ## so curling is just rotating the two joint nodes. Nesting means a
 ## rotation at J1 carries everything past it, exactly as a real finger
 ## does, instead of each segment having to be placed by hand.
-## Three metal prongs around a hub, instead of five fingers
-## (STO-CHARACTER-087).
+## The claw's prongs are MODELLED, not calculated (STO-TOOLS-011).
 ##
-## A claw machine's claw is not a hand, and the silhouette is the whole
-## reason everyone knows on sight what one does: three prongs, evenly
-## spaced, hinging inward together.
+## They used to be built here from eight constants — PRONG_HUB_X,
+## PRONG_HUB_Y, PRONG_FLARE, PRONG_KINK, PRONG_SEGMENTS,
+## PRONG_BASE_SHARE, PRONG_LEN_MUL, PRONG_TH_MUL. Every one of those was
+## a thing the operator had to describe to an agent in words, and the
+## claw's shape took four rounds of description to arrive at because of
+## it (EPI-TOOLS-MODELLING).
 ##
-## They are built as DIGITS in the same shape of structure as fingers —
-## a nested chain of joints named J0/J1/... under a named root, in a
-## node called "Fingers" — so `set_hand_curl` and `set_finger_curl`
-## drive them without knowing there are three of them and that they are
-## metal. Nothing in the driving code changed.
-## Four prongs, one at each diagonal corner — the arrangement of an
-## actual arcade claw (operator, 2026-08-16). Named for where they sit
-## so a test can check they really are at four different corners.
-const PRONG_NAMES: Array = ["ProngTL", "ProngTR", "ProngBL", "ProngBR"]
-## Which corner each one goes to, as (x, y) signs.
-const PRONG_CORNERS: Array = [
-	Vector2(-1.0, 1.0), Vector2(1.0, 1.0),
-	Vector2(-1.0, -1.0), Vector2(1.0, -1.0),
-]
-## How far out from the middle each prong is planted, and how far it
-## leans outward before it closes.
-## Where each prong is planted, as a fraction of the palm's own width
-## (FIST_TH). Derived from the hand rather than typed in, so a bigger
-## Grabber gets a proportionally bigger claw with nothing re-tuned —
-## rule 1 of every procedural body in delve.
+## They now live in `scenes/parts/claw.tscn`, where the operator can
+## drag them. This code keeps the jobs it is good at — placing the part
+## on the hand, scaling it, giving its blocks collision — and gives up
+## the one it was bad at.
 ##
-## ON THE EDGES, and WIDER ACROSS than up (operator, 2026-08-16): the
-## prongs sit at the rim of the palm rather than bunched near its
-## middle, and the four of them make a wide rectangle rather than a
-## square. A claw that is wider than it is tall reads as something that
-## closes on a thing sideways, which is how an arcade claw grabs.
-const PRONG_HUB_X := 0.62      # out to the sides
-const PRONG_HUB_Y := 0.38      # less far up and down
-const PRONG_FLARE := 26.0
-## A prong is longer and heavier than a finger, and tapers to a point.
-## Longer, at the operator's request: a stubby prong reads as a finger.
-## A prong is TWO blocks, not three (STO-CHARACTER-088): a short base
-## and a long top, which is what gives it one clean bend instead of a
-## gentle curve.
-const PRONG_SEGMENTS := 2
-## How the total length splits. The base is the shorter of the two.
-const PRONG_BASE_SHARE := 0.35
-const PRONG_LEN_MUL := 2.2
-## SLIM, and the same all the way along — no taper. A tapering prong
-## reads as a spike; a constant-section bar with a bend in it reads as
-## a grabber, which is the thing that is meant to be obvious on sight.
-const PRONG_TH_MUL := 0.62
-## The elbow. Each prong goes out, then angles back IN — the bend is
-## what makes the silhouette a `<` rather than a straight spike, and a
-## straight spike cannot cradle anything.
+## Still built as DIGITS in the same shape of structure as fingers — a
+## nested chain of joints named J0/J1/... under a named root, in a node
+## called "Fingers" — so `set_hand_curl` and `set_finger_curl` drive
+## them without knowing there are four of them, that they are metal, or
+## that they came out of a file.
 ##
-## Applied on rotation.y because `set_finger_curl` owns rotation.x on
-## every joint. One axis each, so curling and the bend cannot fight.
-const PRONG_KINK := 38.0
+## Preloaded rather than reached by `class_name`: global class names do
+## not resolve in headless `godot -s` test runs.
+const PartModel := preload("res://scripts/part_model.gd")
+const CLAW_PART := "claw"
 
 
 func _add_prongs(hand: Node3D) -> void:
@@ -437,100 +405,23 @@ func _add_prongs(hand: Node3D) -> void:
 	# looks for that node, and a claw is still the thing on the end of
 	# the arm. Renaming it would break the curl driver, the wrap and the
 	# tests for the sake of a word.
-	var fingers := Node3D.new()
+	var fingers := PartModel.load_part(CLAW_PART)
+	if fingers == null:
+		return
 	fingers.name = "Fingers"
+
+	# One scale on the root replaces the `* arm_scale` that used to be
+	# multiplied through every constant. A bigger Grabber still gets a
+	# proportionally bigger claw, with nothing in the file re-tuned.
+	fingers.scale = Vector3.ONE * arm_scale
+	fingers.position = Vector3(0.0, 0.0, 0.0)
 	hand.add_child(fingers)
 
-	var palm := FIST_TH * arm_scale
-	var hub_x := palm * PRONG_HUB_X
-	var hub_y := palm * PRONG_HUB_Y
-	var knuckle_z := HAND_LEN * arm_scale
-	for i in PRONG_NAMES.size():
-		var corner: Vector2 = PRONG_CORNERS[i]
-		var prong := _make_prong(String(PRONG_NAMES[i]))
-		prong.position = Vector3(corner.x * hub_x, corner.y * hub_y,
-				knuckle_z)
-		# Pointing INWARD, toward the claw's centre line
-		# (STO-CHARACTER-088). A prong angled outward is a bollard; one
-		# angled inward is something that could close on a thing.
-		prong.rotation = Vector3(
-				corner.y * deg_to_rad(PRONG_FLARE),
-				-corner.x * deg_to_rad(PRONG_FLARE), 0.0)
-		fingers.add_child(prong)
+	# Collision is generated from whatever blocks are in the model, so a
+	# block the operator adds later is solid without them adding a
+	# collider to it (STO-TOOLS-012).
+	_prong_pieces.append_array(PartModel.add_collision(fingers))
 
-
-## One prong: the same nested joint chain a finger uses, so the curl
-## driver cannot tell the difference — but tapered and all metal.
-func _make_prong(prong_name: String) -> Node3D:
-	var total := FINGER_LEN * arm_scale * PRONG_LEN_MUL
-	var th := FINGER_TH * arm_scale * PRONG_TH_MUL
-
-	var root := Node3D.new()
-	root.name = prong_name
-	var parent := root
-	for s_i in PRONG_SEGMENTS:
-		# Short base, long top.
-		var seg_len: float = total * (PRONG_BASE_SHARE if s_i == 0
-				else 1.0 - PRONG_BASE_SHARE)
-		var joint := Node3D.new()
-		joint.name = "J%d" % s_i
-		# The elbow: one fixed kink partway along, so the prong goes out
-		# and then angles back in. On the y axis, because the curl
-		# driver owns x.
-		if s_i == 1:
-			joint.rotation.y = deg_to_rad(PRONG_KINK)
-		parent.add_child(joint)
-
-		var seg := MeshInstance3D.new()
-		seg.name = "Seg"
-		var sbox := BoxMesh.new()
-		sbox.size = Vector3(th, th, seg_len)
-		seg.mesh = sbox
-		seg.material_override = _metal      # all metal, never skin
-		seg.position = Vector3(0.0, 0.0, seg_len * 0.5)
-		joint.add_child(seg)
-
-		# Every piece gets its own collision (STO-CHARACTER-088).
-		#
-		# An Area3D rather than a solid body: a prong is carried about by
-		# an animated chain, and a solid body dragged through the world
-		# by an animation fights the solver instead of obeying it. An
-		# area detects what it has closed around, which is what a claw
-		# actually needs to know.
-		var sense := Area3D.new()
-		sense.name = "Touch"
-		sense.monitorable = false
-		var cs := CollisionShape3D.new()
-		var shape := BoxShape3D.new()
-		shape.size = Vector3(th, th, seg_len)
-		cs.shape = shape
-		cs.position = Vector3(0.0, 0.0, seg_len * 0.5)
-		sense.add_child(cs)
-		joint.add_child(sense)
-		_prong_pieces.append(sense)
-
-		var tip := Node3D.new()
-		tip.name = "End"
-		tip.position = Vector3(0.0, 0.0, seg_len)
-		joint.add_child(tip)
-		parent = tip
-
-	# ...and NOT against the piece it joins to.
-	#
-	# The two blocks of one prong share a joint, so their shapes always
-	# overlap — by construction, every frame, for ever. That is exactly
-	# what threw the spider's skeleton 335 m across the map when it was
-	# left unhandled (STO-ENEMIES-055), and the operator arrived at the
-	# same rule independently.
-	#
-	# For AREAS it is satisfied by construction rather than by a list of
-	# exceptions: `monitorable = false` means no other area can see
-	# them, and `pieces_touching()` only ever asks for overlapping
-	# BODIES. Two sibling areas sitting inside each other therefore
-	# cannot notice or push one another. Area3D has no
-	# add_collision_exception_with — trying to use one is what proved
-	# these are not solid bodies fighting a solver.
-	return root
 
 
 func _add_fingers(hand: Node3D) -> void:
