@@ -25,7 +25,18 @@ static var LIST := [
 		"speed": 5.0, "sprint": 5.0, "jump": 4.5, "health": 140.0,
 		"arms": true, "double_jump": false, "wall_jump": false,
 		"wall_climb": false, "tail": false, "humanoid": true,
-		"abilities": ["zip", "throw", "piston", "block"],
+		# Remastered 2026-08-16 (EPI-CHARACTER-GRABBER-CLAW): the
+		# Grabber is a CLAW, and nothing else. Zip, throw, pull, piston,
+		# block and punch mode were all removed at the operator's
+		# request — four abilities, four keys and seven unfinished
+		# piston stories traded for one idea a child can describe in a
+		# sentence.
+		#
+		# Its stories are marked removed rather than deleted, the way
+		# the Guardian and Builder were: what they measured and the bugs
+		# they found outlive the feature.
+		"abilities": [],
+		"claw": true,            # STO-CHARACTER-084: Q left, E right
 	},
 	{
 		"id": "runner", "name": "Runner",

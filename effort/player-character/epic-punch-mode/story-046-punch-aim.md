@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: character
 size: S
-status: shipped
+status: removed
 date: 2026-08-07
 depends-on: []
 bd-id: delve-gqn
@@ -14,6 +14,17 @@ complete: 5
 ---
 
 # Punches aim up and down with the camera
+
+## ⛔ REMOVED from the Grabber (2026-08-16)
+
+The Grabber was remastered into a claw-machine claw
+(EPI-CHARACTER-GRABBER-CLAW) and every one of its abilities was taken
+out at the operator's request — four abilities, four keys and seven
+unfinished piston stories traded for one idea a child can describe in
+a sentence.
+
+**This story is kept, not deleted**, the way the Guardian and Builder
+were. What it measured and the bugs it found outlive the feature.
 
 ## Summary
 
