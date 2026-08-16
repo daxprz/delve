@@ -100,6 +100,13 @@ func _physics_process(_d: float) -> bool:
 				_check(spread_x > 0.01 and spread_y > 0.01,
 						"spread AROUND a hub, not in a row (%.3f x %.3f)"
 						% [spread_x, spread_y])
+				# On the EDGES, and WIDER across than up.
+				_check(spread_x > spread_y * 1.2,
+						"wider on the sides than up and down (%.3f vs "
+						% spread_x + "%.3f)" % spread_y)
+				_check(spread_x > 0.18,
+						"and out at the EDGES of the palm, not bunched in "
+						+ "the middle (%.3f m across)" % spread_x)
 				_check(corners.size() == 4,
 						"one prong at each of the FOUR corners (%d)"
 						% corners.size())

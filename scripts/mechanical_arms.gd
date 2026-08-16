@@ -397,7 +397,18 @@ const PRONG_CORNERS: Array = [
 ]
 ## How far out from the middle each prong is planted, and how far it
 ## leans outward before it closes.
-const PRONG_HUB := 0.055
+## Where each prong is planted, as a fraction of the palm's own width
+## (FIST_TH). Derived from the hand rather than typed in, so a bigger
+## Grabber gets a proportionally bigger claw with nothing re-tuned —
+## rule 1 of every procedural body in delve.
+##
+## ON THE EDGES, and WIDER ACROSS than up (operator, 2026-08-16): the
+## prongs sit at the rim of the palm rather than bunched near its
+## middle, and the four of them make a wide rectangle rather than a
+## square. A claw that is wider than it is tall reads as something that
+## closes on a thing sideways, which is how an arcade claw grabs.
+const PRONG_HUB_X := 0.62      # out to the sides
+const PRONG_HUB_Y := 0.38      # less far up and down
 const PRONG_FLARE := 26.0
 ## A prong is longer and heavier than a finger, and tapers to a point.
 ## Longer, at the operator's request: a stubby prong reads as a finger.
@@ -430,12 +441,15 @@ func _add_prongs(hand: Node3D) -> void:
 	fingers.name = "Fingers"
 	hand.add_child(fingers)
 
-	var hub := PRONG_HUB * arm_scale
+	var palm := FIST_TH * arm_scale
+	var hub_x := palm * PRONG_HUB_X
+	var hub_y := palm * PRONG_HUB_Y
 	var knuckle_z := HAND_LEN * arm_scale
 	for i in PRONG_NAMES.size():
 		var corner: Vector2 = PRONG_CORNERS[i]
 		var prong := _make_prong(String(PRONG_NAMES[i]))
-		prong.position = Vector3(corner.x * hub, corner.y * hub, knuckle_z)
+		prong.position = Vector3(corner.x * hub_x, corner.y * hub_y,
+				knuckle_z)
 		# Pointing INWARD, toward the claw's centre line
 		# (STO-CHARACTER-088). A prong angled outward is a bollard; one
 		# angled inward is something that could close on a thing.

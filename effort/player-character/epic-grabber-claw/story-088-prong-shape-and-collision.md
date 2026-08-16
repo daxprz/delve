@@ -62,12 +62,38 @@ other direction, which is a good sign it is the right one.
 - [x] **Slim** — 0.056 m across, down from 0.145 m.
 - [x] Every prong points **inward**: the flare was reversed, so the
       four tips converge instead of splaying.
+- [x] They sit on the **edges** of the palm — 0.496 m across, out from
+      0.110 m — and the arrangement is **wider across than up**
+      (0.496 vs 0.304), measured as a ratio so it cannot pass for a
+      square.
 - [x] Each block has its own collision — **16 pieces** (4 prongs × 2
       blocks × 2 hands).
 - [x] A block cannot fight the block it joins to. See below.
 - [x] The claw still opens, shuts and catches — every earlier check in
       `smoke_claw` still passes, including the 0.100 m elbow.
 - [x] Proven by `tests/smoke_claw.gd`.
+
+## Amended (2026-08-16): on the edges, and wider across
+
+> "they should all be on the edges and pointing towrds the middle and
+> make it wider on the sides" — operator
+
+The prongs were planted near the middle of the palm and in a square.
+Now they sit **at the rim**, and the four of them make a **wide
+rectangle** rather than a square.
+
+| | before | after |
+|---|---|---|
+| across | 0.110 m | **0.496 m** |
+| up and down | 0.110 m | **0.304 m** |
+
+Wider than tall is not arbitrary: a claw that is wider than it is tall
+reads as something that closes on a thing **sideways**, which is how an
+arcade claw actually grabs.
+
+Both numbers are derived from the palm's own width (`FIST_TH`) rather
+than typed in, so a bigger Grabber gets a proportionally bigger claw
+with nothing re-tuned — rule 1 of every procedural body in delve.
 
 ## Built (2026-08-16)
 
