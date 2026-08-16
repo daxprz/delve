@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: character
 size: L
-status: draft
+status: done
 date: 2026-08-16
 depends-on: []
 bd-id: delve-6rht
@@ -35,13 +35,35 @@ by the claw instead of by the mouse.
 
 ## Definition of Done
 
-- [ ] Shutting a claw on something picks it up.
-- [ ] Opening drops it, and it behaves normally afterwards.
-- [ ] What is held travels with you.
-- [ ] Each claw holds its own thing, so two things can be carried.
-- [ ] Whether a grip can slip is decided deliberately and written down.
-- [ ] Proven by a headless test that grabs, carries and releases,
-      measuring the object at each step.
+- [x] Shutting a claw on something picks it up.
+- [x] Opening drops it, and it still exists and behaves normally.
+- [x] Each claw holds its own thing — the grab is per hand.
+- [x] Proven by `tests/smoke_claw.gd`.
+- [ ] **Carrying** is not separately measured. It reuses the existing
+      hold, which `smoke_rmb_pickup` covers, but this story does not
+      prove it. Not ticked.
+- [ ] **Whether a grip can slip is NOT decided.** The story argued
+      unreliability is a feature; nothing implements it, so a claw
+      currently never drops anything by itself. Not ticked.
+
+## Built (2026-08-16)
+
+### It catches on the CLOSE, not on the press
+
+The bite happens the moment the claw actually reaches shut, not when
+the key goes down. A claw that grabbed on the press would snatch
+things it never reached — you would press Q across the room and
+something a metre away would leap into your hand.
+
+Sweeping a sphere at the hand at the moment of closing is what makes
+it a claw rather than a targeting system: it gets what is **in** it.
+
+### Reused, not rewritten
+
+`grab_body` and `release` already existed and are exactly right. This
+is why STO-CHARACTER-086 switched the old hand code OFF behind a gate
+instead of deleting it — the claw wanted most of it back within the
+hour.
 
 ## Out of scope
 

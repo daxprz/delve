@@ -65,8 +65,8 @@ unreliable is funnier and more interesting than one that is not.
 |---|------|------|-------|
 | 083 | strip-the-grabber | M | ✅ Abilities and their keys removed. |
 | 086 | hands-clean-slate | M | ✅ The hands do nothing at all. |
-| 084 | claw-open-shut | M | Q works the left claw, E works the right. |
-| 085 | claw-holds-things | L | Shut on something and it comes with you. |
+| 084 | claw-open-shut | M | ✅ Q works the left claw, E works the right. |
+| 085 | claw-holds-things | L | ✅ Shut on something and it comes with you. |
 
 Built in that order: the old controls have to be out of the way before
 the new ones can have their keys, and the claw has to open and shut
@@ -76,13 +76,12 @@ before holding anything means anything.
 
 - [x] The Grabber has no zip, throw, pull, piston, block or punch mode.
 - [x] The hands themselves do nothing either — a blank page.
-- [ ] Q opens and shuts the LEFT claw; E opens and shuts the RIGHT.
-- [ ] A shut claw holds what it closed on.
-- [ ] The removed stories are marked removed, with their reasoning
-      intact.
-- [ ] Nothing that other characters use is broken by the removal —
-      block, dodge and the rest belong to more than the Grabber in
-      places.
+- [x] Q opens and shuts the LEFT claw; E opens and shuts the RIGHT.
+- [x] A shut claw holds what it closed on.
+- [x] The removed stories are marked removed, with their reasoning
+      intact — 18 of them.
+- [x] Nothing other characters use is broken — the Runner kept dodge,
+      dash and scratch, and its claws still work.
 - [ ] Proven by headless tests, including that the removed keys really
       do nothing now.
 

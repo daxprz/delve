@@ -602,6 +602,8 @@ func _ready() -> void:
 	if _has_arms:
 		var arms: Node3D = MechanicalArmsScript.new()
 		arms.name = "MechanicalArms"
+		# The Grabber's hands are a claw now (EPI-CHARACTER-GRABBER-CLAW).
+		arms.set("claw_mode", bool(def.get("claw", false)))
 		add_child(arms)
 
 	# The Runner has a long physics tail (STO-CHARACTER-010).

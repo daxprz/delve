@@ -999,8 +999,113 @@ func _orient_between(part: Node3D, a: Vector3, b: Vector3,
 ## the current feature.
 var hands_can_act := false
 
+# --- The claw (STO-CHARACTER-084 / 085) ------------------------------
+#
+# > "make the hands like grabers in a claw macicean (the claw) and make
+# > it so the player can press e or q depoeding on which one it one of
+# > the closes or opens" — operator, 2026-08-16
+#
+# Q works the LEFT claw, E works the RIGHT. Each key toggles its own
+# claw between open and shut, and the two are independent so one can be
+# holding something while the other is still hunting.
+## Which key belongs to which hand. Index 0 is the left arm.
+const CLAW_KEYS: Array = ["ability_zip", "toggle_arm_mode"]  # Q, E
+## How open a claw sits when open, and when shut. Not 0 and 1: a real
+## claw does not fold flat, and its prongs still touch when closed.
+const CLAW_OPEN := 0.05
+const CLAW_SHUT := 0.95
+## How fast it travels between them, in curl per second. Slow, because
+## a claw machine's claw is slow — and because a movement you can watch
+## is a movement you can enjoy, which is the same reason the Mage's
+## warp takes its time.
+const CLAW_RATE := 1.6
+## How far from a claw a thing can be and still be caught by it.
+const CLAW_BITE := 1.1
+
+## Per hand: how open it is now, and what it is heading for.
+var _claw_at := [CLAW_OPEN, CLAW_OPEN]
+var _claw_want := [CLAW_OPEN, CLAW_OPEN]
+
+
+## Drive the claws. Called every frame from the arms' own process.
+func _update_claws(delta: float) -> void:
+	if not claw_mode:
+		return
+	for i in mini(_arms.size(), 2):
+		if InputMap.has_action(String(CLAW_KEYS[i])) \
+				and Input.is_action_just_pressed(String(CLAW_KEYS[i])):
+			# Toggle: whichever way it is going, go the other way.
+			var shutting: bool = _claw_want[i] > (CLAW_OPEN + CLAW_SHUT) * 0.5
+			_claw_want[i] = CLAW_OPEN if shutting else CLAW_SHUT
+			if shutting:
+				_claw_release(i)
+
+		var before: float = _claw_at[i]
+		_claw_at[i] = move_toward(_claw_at[i], _claw_want[i],
+				CLAW_RATE * delta)
+		set_hand_curl(i, _claw_at[i])
+
+		# It catches whatever it closes ON, at the moment it closes —
+		# not when the key is pressed. A claw that grabbed on the press
+		# would snatch things it never reached (STO-CHARACTER-085).
+		if before < CLAW_SHUT * 0.85 and _claw_at[i] >= CLAW_SHUT * 0.85:
+			_claw_bite(i)
+
+
+## Look for something in the claw and take hold of it.
+func _claw_bite(i: int) -> void:
+	if _arms[i].get("grabbed_body") != null:
+		return
+	var hand := _claw_hand(i)
+	if hand == null:
+		return
+	var space := hand.get_world_3d().direct_space_state
+	var shape := SphereShape3D.new()
+	shape.radius = CLAW_BITE
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.transform = Transform3D(Basis(), hand.global_position)
+	if _player != null:
+		q.exclude = [(_player as CollisionObject3D).get_rid()]
+	for hit in space.intersect_shape(q, 8):
+		var body = hit.get("collider")
+		if body is RigidBody3D or (body is Node
+				and (body as Node).is_in_group("grabbable")):
+			grab_body(i, body, (body as Node3D).global_position)
+			return
+
+
+func _claw_release(i: int) -> void:
+	if _arms[i].get("grabbed_body") != null or bool(_arms[i].get("grabbed")):
+		release(i)
+
+
+## The hand node a claw closes around.
+func _claw_hand(i: int) -> Node3D:
+	if i < 0 or i >= _arms.size():
+		return null
+	var root: Node3D = _arms[i]["root"]
+	return root.get_node_or_null("Hand") as Node3D
+
+
+## Is this claw shut? (for tests)
+func claw_shut(i: int) -> bool:
+	return _claw_at[i] >= CLAW_SHUT * 0.85
+
+
+## How closed a claw is right now, 0..1 (for tests).
+func claw_openness(i: int) -> float:
+	return _claw_at[i]
+
+
+## Does this character use the claw at all?
+var claw_mode := false
+
 
 func _update_grab_input() -> void:
+	# The claw runs whether or not the OLD hand behaviour does — it is
+	# the thing replacing it (STO-CHARACTER-084).
+	_update_claws(get_process_delta_time())
 	if not hands_can_act:
 		return
 	if _camera == null:

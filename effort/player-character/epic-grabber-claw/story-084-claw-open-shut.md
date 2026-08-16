@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: character
 size: M
-status: draft
+status: done
 date: 2026-08-16
 depends-on: []
 bd-id: delve-o9qh
@@ -34,14 +34,26 @@ can watch is a moment you can enjoy.
 
 ## Definition of Done
 
-- [ ] Q toggles the left claw between open and shut.
-- [ ] E toggles the right claw, independently.
-- [ ] Each claw stays where it was put until pressed again.
-- [ ] Opening and shutting is visible movement, not an instant state
-      change — measured partway and found partway.
-- [ ] It reads as a claw closing: the prongs come together.
-- [ ] Proven by a headless test measuring how open each claw is, and
-      that working one does NOT move the other.
+- [x] Q toggles the LEFT claw: 0.05 → 0.95 → 0.05.
+- [x] E toggles the RIGHT claw, independently.
+- [x] Working one leaves the other alone — after Q the left is 0.95 and
+      the right is still 0.05. Two claws, not one worked by two keys.
+- [x] Each keeps its own state: shutting the right left the shut left
+      shut.
+- [x] It **travels**. Caught halfway, the left claw was **0.23** — not
+      open and not shut, so it cannot be a snap.
+- [x] The prongs are the five procedural fingers, curling together.
+- [x] Proven by `tests/smoke_claw.gd`.
+
+## Built (2026-08-16)
+
+The claw is the FINGERS, not new geometry — `set_hand_curl` already
+curls all five together, and the claw simply drives it slowly between
+an open pose and a shut one. Keeping the fingers out of the Grabber's
+cull (STO-CHARACTER-086) is what made this small.
+
+Slow on purpose: 1.6 curl per second, so the travel is something you
+watch. Same instinct as the Mage's warp, and the same reason.
 
 ## Out of scope
 
