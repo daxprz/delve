@@ -4,13 +4,26 @@ parent: ./epic.md
 kind: story
 effort: character
 size: M
-status: draft
+status: superseded
 date: 2026-08-13
 depends-on: [STO-CHARACTER-057]
 bd-id: delve-rze
 ---
 
 # Fingers bend like real fingers
+
+## ⛔ SUPERSEDED by the claw (2026-08-16)
+
+The Grabber's hands became a three-prong claw-machine claw
+(STO-CHARACTER-087), and the Grabber was the **only** character with
+mechanical arms — so the five-finger hand no longer exists anywhere in
+delve.
+
+**Kept, not deleted.** What this story measured and the bugs it found
+are still true of hands, and the claw reuses the machinery underneath
+it: the same nested joint chain, the same curl driver, the same wrap.
+The prongs are built as digits precisely so none of that had to be
+rewritten.
 
 ## Summary
 

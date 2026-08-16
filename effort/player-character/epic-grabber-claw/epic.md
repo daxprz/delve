@@ -67,6 +67,7 @@ unreliable is funnier and more interesting than one that is not.
 | 086 | hands-clean-slate | M | ✅ The hands do nothing at all. |
 | 084 | claw-open-shut | M | ✅ Q works the left claw, E works the right. |
 | 085 | claw-holds-things | L | ✅ Shut on something and it comes with you. |
+| 087 | looks-like-a-claw | M | ✅ Three metal prongs, not five fingers. |
 
 Built in that order: the old controls have to be out of the way before
 the new ones can have their keys, and the claw has to open and shut

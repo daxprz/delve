@@ -66,6 +66,42 @@ func _physics_process(_d: float) -> bool:
 					"the left claw starts open")
 			_check(not bool(_arms.call("claw_shut", 1)),
 					"and so does the right")
+			_next("looks_like_a_claw")
+
+		"looks_like_a_claw":
+			# STO-CHARACTER-087. Counting is not enough — three fingers
+			# in a row would count as three. They have to be spread
+			# AROUND a hub.
+			var root: Node3D = _arms.call("fingers_root", 0)
+			_check(root != null, "the claw has digits at all")
+			if root == null:
+				return _finish()
+			var digits: Array = root.get_children()
+			var names: Array = []
+			for d in digits:
+				names.append(String(d.name))
+			print("[CLAW] digits on the left hand: %s" % str(names))
+			_check(digits.size() == 3,
+					"it has THREE prongs, not five fingers (%d)"
+					% digits.size())
+			if digits.size() == 3:
+				# Evenly around the hub. Three in a line would all share
+				# a coordinate; three at 120 degrees cannot.
+				var spread_x := 0.0
+				var spread_y := 0.0
+				var lo := Vector2(999, 999)
+				var hi := Vector2(-999, -999)
+				for d in digits:
+					var pos: Vector3 = (d as Node3D).position
+					lo = Vector2(minf(lo.x, pos.x), minf(lo.y, pos.y))
+					hi = Vector2(maxf(hi.x, pos.x), maxf(hi.y, pos.y))
+				spread_x = hi.x - lo.x
+				spread_y = hi.y - lo.y
+				print("[CLAW] prongs spread %.3f across, %.3f up"
+						% [spread_x, spread_y])
+				_check(spread_x > 0.01 and spread_y > 0.01,
+						"and they are spread AROUND a hub, not in a row "
+						+ "(%.3f x %.3f)" % [spread_x, spread_y])
 			_next("close_left")
 
 		"close_left":

@@ -374,7 +374,92 @@ func _make_fist() -> Node3D:
 ## so curling is just rotating the two joint nodes. Nesting means a
 ## rotation at J1 carries everything past it, exactly as a real finger
 ## does, instead of each segment having to be placed by hand.
+## Three metal prongs around a hub, instead of five fingers
+## (STO-CHARACTER-087).
+##
+## A claw machine's claw is not a hand, and the silhouette is the whole
+## reason everyone knows on sight what one does: three prongs, evenly
+## spaced, hinging inward together.
+##
+## They are built as DIGITS in the same shape of structure as fingers —
+## a nested chain of joints named J0/J1/... under a named root, in a
+## node called "Fingers" — so `set_hand_curl` and `set_finger_curl`
+## drive them without knowing there are three of them and that they are
+## metal. Nothing in the driving code changed.
+const PRONG_NAMES: Array = ["ProngA", "ProngB", "ProngC"]
+## How far out from the middle each prong is planted, and how far it
+## leans outward before it closes.
+const PRONG_HUB := 0.055
+const PRONG_FLARE := 26.0
+## A prong is longer and heavier than a finger, and tapers to a point.
+const PRONG_LEN_MUL := 1.35
+const PRONG_TH_MUL := 1.6
+
+
+func _add_prongs(hand: Node3D) -> void:
+	# Called "Fingers" ON PURPOSE: everything that reaches into a hand
+	# looks for that node, and a claw is still the thing on the end of
+	# the arm. Renaming it would break the curl driver, the wrap and the
+	# tests for the sake of a word.
+	var fingers := Node3D.new()
+	fingers.name = "Fingers"
+	hand.add_child(fingers)
+
+	var hub := PRONG_HUB * arm_scale
+	var knuckle_z := HAND_LEN * arm_scale
+	for i in PRONG_NAMES.size():
+		# Evenly around the hub — 120 degrees apart, not in a row.
+		var a: float = TAU * float(i) / float(PRONG_NAMES.size())
+		var prong := _make_prong(String(PRONG_NAMES[i]))
+		prong.position = Vector3(cos(a) * hub, sin(a) * hub, knuckle_z)
+		# Leaning outward, so an open claw is a spread and a shut one
+		# brings the points together.
+		prong.rotation = Vector3(sin(a) * deg_to_rad(PRONG_FLARE),
+				-cos(a) * deg_to_rad(PRONG_FLARE), 0.0)
+		fingers.add_child(prong)
+
+
+## One prong: the same nested joint chain a finger uses, so the curl
+## driver cannot tell the difference — but tapered and all metal.
+func _make_prong(prong_name: String) -> Node3D:
+	var seg_len := FINGER_LEN * arm_scale * PRONG_LEN_MUL \
+			/ float(FINGER_SEGMENTS)
+	var base_th := FINGER_TH * arm_scale * PRONG_TH_MUL
+
+	var root := Node3D.new()
+	root.name = prong_name
+	var parent := root
+	for s_i in FINGER_SEGMENTS:
+		var joint := Node3D.new()
+		joint.name = "J%d" % s_i
+		parent.add_child(joint)
+
+		# Thicker at the hub, pointed at the tip — the taper is what
+		# reads as "claw" rather than "three fingers".
+		var t: float = float(s_i) / float(maxi(FINGER_SEGMENTS - 1, 1))
+		var th: float = lerpf(base_th, base_th * 0.3, t)
+		var seg := MeshInstance3D.new()
+		seg.name = "Seg"
+		var sbox := BoxMesh.new()
+		sbox.size = Vector3(th, th, seg_len)
+		seg.mesh = sbox
+		seg.material_override = _metal      # all metal, never skin
+		seg.position = Vector3(0.0, 0.0, seg_len * 0.5)
+		joint.add_child(seg)
+
+		var tip := Node3D.new()
+		tip.name = "End"
+		tip.position = Vector3(0.0, 0.0, seg_len)
+		joint.add_child(tip)
+		parent = tip
+	return root
+
+
 func _add_fingers(hand: Node3D) -> void:
+	# A claw gets prongs; a hand gets fingers.
+	if claw_mode:
+		_add_prongs(hand)
+		return
 	var fingers := Node3D.new()
 	fingers.name = "Fingers"
 	hand.add_child(fingers)
