@@ -394,7 +394,30 @@ func _build_pause_menu() -> void:
 	vbox.add_child(resume)
 
 	# Fixing an unreadable UI must be possible mid-game too.
+	# Change character without leaving (STO-UI-008).
+	#
+	# The whole mechanism already existed — _choose_character respawns
+	# you as the new one when a round is running — and this row was the
+	# only missing piece. STO-UI-005 was marked shipped claiming this
+	# row was here; it never was.
+	var pause_chars := Label.new()
+	pause_chars.name = "PauseCharLabel"
+	pause_chars.text = "Change character:"
+	pause_chars.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(pause_chars)
+	_build_character_row(vbox, "PauseCharRow")
+
 	_build_ui_scale_row(vbox)
+
+	# Back to the lobby, still connected (STO-UI-009). Placed ABOVE Main
+	# Menu because it is the gentler of the two and the one you want far
+	# more often — and because a mis-click on the wrong one costs the
+	# whole session.
+	var to_lobby := Button.new()
+	to_lobby.name = "LobbyButton"
+	to_lobby.text = "Back to Lobby"
+	to_lobby.pressed.connect(_to_lobby)
+	vbox.add_child(to_lobby)
 
 	var to_menu := Button.new()
 	to_menu.name = "MainMenuButton"
@@ -780,6 +803,57 @@ func _open_lobby(is_host: bool) -> void:
 		_start_button.visible = is_host
 		_start_button.disabled = not is_host
 	_refresh_lobby()
+
+
+## Back to the lobby WITHOUT disconnecting (STO-UI-009).
+##
+## Deliberately not the same as Main Menu, which tears the session
+## down. That is right when you are finished and wrong when you only
+## want to regroup: leaving means the host loses you, and if you ARE
+## the host, everyone loses everything.
+##
+## **Who goes back, decided 2026-08-16:**
+##
+## - A **client** pressing it goes back alone. The others keep playing.
+## - The **host** pressing it takes everyone. The host is the one who
+##   starts a round, so the host is the one who can end it.
+##
+## The alternative — the host sitting in the lobby while others play on
+## — was rejected for now. It needs the game to keep running with a
+## player who is present but not in it, which is a much bigger change
+## than a button.
+func _to_lobby() -> void:
+	# Unpaused the same way Main Menu does it, rather than through
+	# _toggle_pause, which would flip the pause back ON if the menu were
+	# somehow closed already.
+	get_tree().paused = false
+	if _pause_menu != null:
+		_pause_menu.visible = false
+	var networked: bool = multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer is not OfflineMultiplayerPeer
+	if networked and multiplayer.is_server():
+		_return_to_lobby.rpc()
+	_return_to_lobby()
+
+
+## Put this peer back in the lobby, leaving the connection alone.
+@rpc("authority", "call_remote", "reliable")
+func _return_to_lobby() -> void:
+	_clear_players()
+	var networked: bool = multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer is not OfflineMultiplayerPeer
+	_open_lobby(not networked or multiplayer.is_server())
+	_set_mouse_locked(false)
+
+
+## Take every spawned body out of the world.
+##
+## Without this, starting again spawns a second body for everyone and
+## the old ones stand about being hunted by spiders.
+func _clear_players() -> void:
+	for c in players.get_children():
+		c.name = "%sGone" % c.name    # free the name now; freeing is deferred
+		c.queue_free()
 
 
 ## Host only: everyone into the world.

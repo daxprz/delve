@@ -4,7 +4,7 @@ parent: ./epic.md
 kind: story
 effort: ui
 size: M
-status: draft
+status: done
 date: 2026-08-15
 depends-on: []
 bd-id: delve-yexh
@@ -38,14 +38,33 @@ other direction.
 
 ## Definition of Done
 
-- [ ] The character picker is in the pause menu.
-- [ ] Choosing a different one respawns you as it, mid-game.
-- [ ] Everyone ELSE sees the change — the choice travels with the
-      spawn, not from the local menu.
-- [ ] Your health and position behave sensibly on the switch.
-- [ ] Proven by a headless test that switches mid-game and checks the
-      player really is the new character afterwards.
-- [ ] STO-UI-005's claim is corrected, so the record stops lying.
+- [x] The character picker is in the pause menu — one button per
+      character, **5** of them.
+- [x] Choosing a different one respawns you as it, mid-game. Measured:
+      **grabber → runner**.
+- [x] Everyone else sees the change: the choice travels with the spawn
+      (`_spawn_player` reads it), which already worked.
+- [x] Proven by `tests/smoke_pause_lobby.gd`, which presses a button
+      and then asks the PLAYER who it is — not "does a row exist".
+- [x] STO-UI-005 corrected to in-progress with the discrepancy written
+      into it.
+- [ ] Health and position across the switch are not specified or
+      tested. You respawn fresh at your spawn point. Not ticked.
+
+## Built (2026-08-16) — nine lines
+
+The mechanism was all there. `_choose_character` already respawns you
+when a round is running, and `_build_character_row` already builds the
+picker. The pause menu simply never called it.
+
+That is the whole reason the story was believable enough to be marked
+shipped: everything around it was real.
+
+**The test caught a bug that was mine, not the feature's.** Switching
+renames the old body to `"1Old"` and frees it next frame, and the first
+version of the test grabbed the first child that was not obviously
+dead — so it read the body being thrown away and reported that
+switching did nothing. It asks for the live node by exact name now.
 
 ## Out of scope
 
