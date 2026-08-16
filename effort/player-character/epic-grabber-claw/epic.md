@@ -63,7 +63,8 @@ unreliable is funnier and more interesting than one that is not.
 
 | # | Slug | Size | Notes |
 |---|------|------|-------|
-| 083 | strip-the-grabber | M | **First.** Remove the abilities and their keys. |
+| 083 | strip-the-grabber | M | ✅ Abilities and their keys removed. |
+| 086 | hands-clean-slate | M | ✅ The hands do nothing at all. |
 | 084 | claw-open-shut | M | Q works the left claw, E works the right. |
 | 085 | claw-holds-things | L | Shut on something and it comes with you. |
 
@@ -73,7 +74,8 @@ before holding anything means anything.
 
 ## Definition of Done
 
-- [ ] The Grabber has no zip, throw, pull, piston, block or punch mode.
+- [x] The Grabber has no zip, throw, pull, piston, block or punch mode.
+- [x] The hands themselves do nothing either — a blank page.
 - [ ] Q opens and shuts the LEFT claw; E opens and shuts the RIGHT.
 - [ ] A shut claw holds what it closed on.
 - [ ] The removed stories are marked removed, with their reasoning

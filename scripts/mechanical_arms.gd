@@ -979,7 +979,30 @@ func _orient_between(part: Node3D, a: Vector3, b: Vector3,
 # Grab input & aiming — STO-CHARACTER-003
 # ---------------------------------------------------------------------
 
+## Everything the hands can do lives here — and it is switched OFF
+## (STO-CHARACTER-086).
+##
+## > "get rid of anything the hands can do we will rewrite all of this"
+## > — operator, 2026-08-16
+##
+## The Grabber is being remastered into a claw-machine claw, and the
+## claw is meant to be written on a blank page rather than on top of a
+## system that already believes it knows what a hand is for.
+##
+## Switched off behind one gate rather than torn out, for two reasons:
+## the claw will want most of this back — `grab_body`, `release`, the
+## finger wrap — and deleting it would mean writing it again, worse;
+## and a gate is one line to reverse if this turns out to be the wrong
+## idea, where ripping out 1500 lines is not.
+##
+## This is NOT dead code being kept around. The hands doing nothing IS
+## the current feature.
+var hands_can_act := false
+
+
 func _update_grab_input() -> void:
+	if not hands_can_act:
+		return
 	if _camera == null:
 		return
 	# E toggles grab-mode / punch-mode (STO-CHARACTER-007).

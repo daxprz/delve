@@ -92,6 +92,41 @@ func _physics_process(_d: float) -> bool:
 			if _me.has_method("is_holding"):
 				_check(not bool(_me.call("is_holding")),
 						"the throw key does not make it grab anything")
+			_next("hands_dead")
+
+		"hands_dead":
+			# STO-CHARACTER-086: the HANDS do nothing either.
+			#
+			# Emptying the ability list was not enough — the mouse
+			# buttons still grabbed and E still cycled arm modes,
+			# underneath it. This presses all of them.
+			if _ticks == 1:
+				for a in ["scratch_left", "scratch_right",
+						"toggle_arm_mode"]:
+					if InputMap.has_action(a):
+						Input.action_press(a)
+				return false
+			if _ticks < 70:
+				return false
+			for a in ["scratch_left", "scratch_right", "toggle_arm_mode"]:
+				if InputMap.has_action(a):
+					Input.action_release(a)
+			var arms := _me.get_node_or_null("MechanicalArms")
+			_check(arms != null, "the arms are still there")
+			if arms != null:
+				var held := 0
+				for i in 2:
+					if arms.has_method("grabbed_body") \
+							and arms.call("grabbed_body", i) != null:
+						held += 1
+				print("[STRIP] after mashing the mouse and E: %d things held"
+						% held)
+				_check(held == 0,
+						"the hands grab NOTHING — mouse and E do nothing "
+						+ "(%d held)" % held)
+				_check(not bool(arms.get("hands_can_act")),
+						"and they are switched off deliberately, not by "
+						+ "accident")
 			_next("still_works")
 
 		"still_works":
