@@ -3,12 +3,15 @@ xid: MSG-PROJ-001
 content-path: /home/dax/projects/delve/messages/2026-08-26/07-25-29-handoff-0725/001/msg-handoff-0725.md
 kind: msg
 effort: proj
-status: open
+status: shipped
 date: 2026-08-26
 to: ember
 from: ember
 topic: handoff-0725
 bd-id: delve-p9o3
+shipped: 2026-08-26
+tasks: 0
+complete: 0
 ---
 
 # Handoff from previous ember session
