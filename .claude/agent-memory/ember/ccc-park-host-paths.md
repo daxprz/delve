@@ -6,8 +6,8 @@ metadata:
 ---
 
 On this host (`dax@`, delve), `/park`'s own documented snippets do not
-run as written. Measured, twice (2026-08-26, MSG-PROJ-001 and
-MSG-PROJ-002).
+run as written. Measured repeatedly (2026-08-26 MSG-PROJ-001/002; re-verified
+2026-09-06 during MSG-PROJ-005 — still exactly correct, both counts).
 
 - **Step 0 resolver refuses.** It anchors on a dir having BOTH `scripts/`
   and `.beads/`. This host's CCC checkout is `/home/dax/ccc/workspace`,
@@ -19,7 +19,8 @@ MSG-PROJ-002).
 - **`bin/ccc-bd` is relative to the CCC workspace, not the project.** It
   fails from a project cwd. Use `ccc-bd` on PATH
   (`/home/dax/.local/bin/ccc-bd`). Applies to step 4a's mint and step 6's
-  close.
+  close — and to `/go`'s step-4 consume guard, which uses the same
+  `bin/ccc-bd` form.
 - `ccc_beads_first.py --self-test` fails its third case here because it
   hardcodes `/var/ccc/workspace` (the PRIMARY's path, absent on this
   node). The predicate itself works correctly — only the self-test is
