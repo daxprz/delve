@@ -1,34 +1,35 @@
 ---
-xid: MSG-PROJ-003
-content-path: /home/dax/projects/delve/messages/2026-08-26/08-29-55-handoff-0829/001/msg-handoff-0829.md
+xid: MSG-PROJ-004
+content-path: /home/dax/projects/delve/messages/2026-09-06/15-36-57-handoff-1536/001/msg-handoff-1536.md
 kind: msg
 effort: proj
-status: shipped
-date: 2026-08-26
+status: open
+date: 2026-09-06
 to: ember
 from: ember
-topic: handoff-0829
-bd-id: delve-u4ep
-shipped: 2026-09-06
-tasks: 0
-complete: 0
+topic: handoff-1536
+bd-id: delve-75b4
 ---
 
 # Handoff from previous ember session
 
-> **This session did NO work at all — not one operator word.** It was
-> spawned and handed `/park --exit` as its first and only input. Its
-> entire job is to **carry MSG-PROJ-002 forward**, which itself carried
-> MSG-PROJ-001 forward. **Three parks in a row now with no game work and
-> no operator contact.** Everything below is inherited and still live.
-> Treat it as the current state of the project, not as history.
+> **FOURTH consecutive park with no work and no operator contact.** This
+> session was spawned and handed `/park --exit` as its first and only
+> input. Its whole job is to carry MSG-PROJ-003 forward, which carried
+> 002, which carried 001. Everything below is inherited and still live —
+> read it as the current state of the project, not as history.
+>
+> **One thing DID change, and it matters:** ~11 days of wall clock passed
+> (2026-08-26 -> 2026-09-06) and **the Godot editor the last three
+> handoffs told you to ask about is DEAD.** Corrected below. Do not
+> repeat the stale claim.
 
 ## What Was Happening
 
 **Nothing was built, read, tested, or decided.** No commits, no Beads
-changes, no file edits. Working tree clean at `5ef8a16` on `main`.
+changes, no file edits. Working tree clean at `acde807` on `main`.
 
-The inherited open thread, unchanged across all three handoffs:
+The inherited open thread, unchanged across all four handoffs:
 
 Building **EPI-TOOLS-MODELLING** — a way for the operator (a child) to
 model game shapes in Godot's editor instead of describing them in words.
@@ -37,32 +38,45 @@ model game shapes in Godot's editor instead of describing them in words.
 `mechanical_arms.gd` into `scenes/parts/claw.tscn`, which the operator
 can drag around in Godot.
 
-A session two parks ago launched the Godot editor for them and asked them
-to look at `claw.tscn`. **They still have not reported what they saw.**
+A session four parks ago launched the Godot editor for them and asked
+them to look at `claw.tscn`. **They still have not reported what they
+saw** — and now they cannot, because the window is gone.
 
-**That editor is STILL RUNNING** — pid `4049116`, **1h13m** elapsed as of
-this park (`godot --editor --path .`, log `/tmp/godot_editor.log`).
-Verified live this session with `ps`, not assumed. So the operator can
-still be asked about a window that is genuinely on their screen. If it
-has died by the time you read this, relaunch before asking.
+## Environment delta measured THIS session (supersedes MSG-PROJ-003)
+
+Measured, not assumed:
+
+- **Godot editor pid `4049116` is GONE.** MSG-PROJ-003 recorded it live
+  at 1h13m; ~11 days later it is not in the process table.
+- **No Godot process of any kind is running** (`pgrep -af godot` returns
+  only the probing shell itself — do not misread that line as a hit).
+- **RCON port 9999 is not answering** (`echo status | nc -w1` fails). So
+  there is no live game to inspect either.
+
+**Consequence for the successor:** you must **relaunch the editor before
+asking the operator what they see** — `godot --editor --path .`, log to
+`/tmp/godot_editor.log`. The previous three handoffs' "the editor is
+still up, just ask them" shortcut no longer applies.
 
 ## What Needs to Happen Next
 
-1. **Ask what they saw in the editor.** This is the same #1 for the third
-   time. The last DoD checkbox on STO-TOOLS-011 is operator-only —
+1. **Relaunch the editor, then ask what they see in `claw.tscn`.** This
+   is the same #1 for the fourth time, but the first step is now new
+   (see above). The last DoD checkbox on STO-TOOLS-011 is operator-only —
    *"Opening `claw.tscn` in Godot shows a claw, not an empty scene"* — and
    nobody has looked. STO-TOOLS-011 is deliberately still `in_progress`
    because of it; `ccc-bd` correctly refused to close it.
-   **WHY-DEFERRED (three times now):** not a block and not laziness — it
-   needs the operator's eyes, and they have not been at the keyboard for
-   it. Two of the three intervening sessions had no operator present at
-   all. Ask this before offering anything else.
+   **WHY-DEFERRED (four times now):** not a block and not laziness — it
+   needs the operator's eyes, and they have not been at the keyboard.
+   Three of the four intervening sessions had no operator present at all.
+   Ask this before offering anything else.
 2. Then either **STO-TOOLS-015** (the guide, so instructions live
    somewhere findable) or **STO-TOOLS-017** (same trick for the spike and
-   spider legs). Both were offered two sessions ago; **they picked
+   spider legs). Both were offered three sessions ago; **they picked
    neither.** Do not pick for them.
-3. **Consider filing the `/park` resolver bug upstream** (`/ccc-bug`) —
-   see the environment note below. It has now cost three parks.
+3. **File the `/park` resolver bug upstream** (`/ccc-bug`). See below —
+   it has now cost FOUR parks and the deferral reasoning has stopped
+   being good.
 
 ## Operator's Words / Open Decisions
 
@@ -71,9 +85,10 @@ has died by the time you read this, relaunch before asking.
 
 That is all. No question, no instruction, nothing to interpret. There is
 genuinely nothing new to hand on from this session; the value of this
-artifact is entirely the carried-forward context below.
+artifact is the carried-forward context below plus the editor-is-dead
+correction above.
 
-**From MSG-PROJ-002 (the previous park), verbatim:**
+**From MSG-PROJ-002, verbatim — still unresolved:**
 > "Are we logged in?"
 
 Asked alongside a `/park --exit`. That session judged the two
@@ -88,11 +103,10 @@ What was found and told them, so it is not re-derived:
 - Remote is `git@github.com:daxprz/delve.git` — **SSH**, so pushes
   authenticate by SSH key, not by a login.
 
-**That question was never resolved.** Which "logged in" they meant is
-still unknown — GitHub/releases, the running Godot game + RCON, or the
-CCC fleet. Three options were offered and the answer was a re-park.
-**If they ask again, ask which one they mean rather than re-answering
-GitHub.**
+**Which "logged in" they meant is still unknown** — GitHub/releases, the
+running Godot game + RCON, or the CCC fleet. Three options were offered
+and the answer was a re-park. **If they ask again, ask which one they
+mean rather than re-answering GitHub.**
 
 **Inherited from MSG-PROJ-001 — the original request, verbatim:**
 > "make a way that i can modle things i want to make like the grabers
@@ -162,6 +176,9 @@ STO-TOOLS-012 is amended in writing — what remains is the *guarantees*
 - **Full suite: 89 pass / 10 fail. All 10 fail IDENTICALLY before the
   change** — baselined via `git stash`. `smoke_arms` and
   `smoke_held_by_leg` are FLAKY, not fixed; do not claim credit.
+- **These numbers are now ~11 days old and nothing has re-run them.**
+  They were true at `b33f4ae`; the tree has not changed since, so they
+  should still hold — but say "last measured 2026-08-26", not "passes".
 
 **Still open from earlier sessions (unchanged):** STO-UI-010 (reconnect
 without disturbing the host) — asked for twice, never started; its
@@ -185,46 +202,48 @@ Nothing was edited this session. Files still in play from 011/013:
 - `effort/tools/epic-modelling/` — epic + 7 stories
 - `.claude/agent-memory/ember/godot-headless-testing.md`
 - `.claude/agent-memory/ember/ccc-park-host-paths.md` — the park-path
-  workaround, saved as memory at `5ef8a16` so a fourth session does not
-  re-measure it
+  workaround; read it instead of re-measuring
 
 All committed and pushed. Working tree clean at park.
 
-## Environment note — the `/park` resolver bug, hit a THIRD time
+## Environment note — the `/park` resolver bug, hit a FOURTH time
 
-`/park` step 0's resolver anchors on `scripts/` + `.beads/`. This host's
-CCC checkout is `/home/dax/ccc/workspace`, which has `scripts/` and
-`.ccc/` but **no `.beads/`** — so the resolver refuses with
-`FATAL: no CCC checkout above this skill`. CCC is present the whole time;
-all three helpers exist at `/home/dax/ccc/workspace/scripts/`
+`/park` step 0's resolver anchors on a directory having BOTH `scripts/`
+and `.beads/`. This host's CCC checkout is `/home/dax/ccc/workspace`,
+which has `scripts/` and `.ccc/` but **no `.beads/`** — so it refuses
+with `FATAL: no CCC checkout above this skill`. CCC is present the whole
+time; all three helpers exist at `/home/dax/ccc/workspace/scripts/`
 (`ccc_beads_first.py`, `ccc_legacy_handoff.py`, `delegate_parked.py`).
 
 This session read the workaround out of agent memory instead of
-re-measuring, which is what that memory is for — but it still means the
-skill remains wrong on this host.
+re-measuring — which is what that memory is for — and confirmed
+`ccc_beads_first.py` still reports `beads-first` for delve.
 
 Also on this host:
-- `ccc_beads_first.py --self-test` fails its third case, because it
+- `ccc_beads_first.py --self-test` fails its third case because it
   hardcodes `/var/ccc/workspace` — the PRIMARY's path, absent on this
   node. The predicate itself is correct; only the self-test is wrong.
   Same shape as STO-BUGS-135, one host over.
 - The skill's step-4a snippet says `bin/ccc-bd`, which is **relative to
   the CCC workspace, not the project** — it fails from delve's cwd. Use
-  `ccc-bd` on PATH (`/home/dax/.local/bin/ccc-bd`). Same for the
-  `bin/ccc-bd close` in step 6.
+  `ccc-bd` on PATH (`/home/dax/.local/bin/ccc-bd`). Same for step 6's
+  `close`.
 
-**This has now cost three parks. File it upstream** (`/ccc-bug`).
-**WHY-DEFERRED, again:** this session was a bare park with zero operator
-mandate and zero turns of its own; filing a platform bug is not parking.
-A successor with a spare moment should just file it — the measurements
-are all in `.claude/agent-memory/ember/ccc-park-host-paths.md`, so it is
-a five-minute job with nothing left to discover.
+**WHY-DEFERRED — and this reasoning is now wearing out.** Each of the
+four sessions declined for the same defensible reason: `--exit` means an
+automated caller is waiting on this process to disappear, and filing a
+platform bug is not parking. That is still true. But four repetitions of
+a "five-minute job" is the deferral pattern the skill warns about, and
+the memory file holds every measurement needed, so there is nothing left
+to discover. **Successor: file it FIRST, before anything else, in any
+session that is not itself a bare park.**
 
 ## Beads XIDs
 
-- `MSG-PROJ-002` — **closed by this park as superseded** (STO-BUGS-138).
-  Its content is carried forward above in full; nothing in it was
-  resumed. (It had itself superseded `MSG-PROJ-001`.)
+- `MSG-PROJ-003` — **closed by this park as superseded** (STO-BUGS-138).
+  Its content is carried forward above in full and its editor claim is
+  corrected; nothing in it was resumed. (It superseded 002, which
+  superseded 001.)
 - `EPI-TOOLS-MODELLING` — in_progress; 2 of 7 stories done
 - `STO-TOOLS-011` — **in_progress, deliberately not closed**; every
   checkbox ticked except the operator-only one (does it look right in the
@@ -234,11 +253,13 @@ a five-minute job with nothing left to discover.
 - `STO-TOOLS-014/015/016/017` — open, unstarted
 - `STO-TOOLS-009` — open (tests can run while the game is open)
 - `DES-TOOLS-001` — in_progress (TUMU testing & diagnostics infra)
-- `EPI-TOOLS-RCON-DEBUG` — open
+- `DES-CHARACTER-001`, `DES-UI-001`, `EPI-CHARACTER-RUNNER-TAIL`,
+  `EPI-UI-PAUSE-MENU`, `STO-CHARACTER-052` — in_progress, pre-existing,
+  untouched this session
 - `STO-UI-002` — in_progress, flagged stale-in-progress (pre-existing)
-- Nothing was assigned to `ember` and in-progress at park time
+- Nothing assigned to `ember` and in-progress at park time
   (`ccc-bd list --assignee=ember --status=in-progress` returned empty).
 
 ## Status notes
 
-- 2026-08-26: Filed.
+- 2026-09-06: Filed.
